@@ -1,0 +1,296 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════
+   AresVision — Global Styles & Animations
+   ═══════════════════════════════════════════ */
+
+/* ─── 主题 CSS 变量 ─── */
+:root {
+  --font-scale:       1;
+  --font-body:        'Space Grotesk', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-display:     'Sora', 'Space Grotesk', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --bg:               #02050b;
+  --bg-elevated:      #08111b;
+  --bg-card:          rgba(8,16,27,0.88);
+  --bg-card-strong:   rgba(11,20,34,0.96);
+  --bg-nav:           rgba(3,8,14,0.90);
+  --bg-muted:         rgba(121,187,255,0.08);
+  --bg-muted-strong:  rgba(121,187,255,0.14);
+  --text:             #f5fbff;
+  --text-80:          rgba(245,251,255,0.92);
+  --text-60:          rgba(219,232,246,0.84);
+  --text-40:          rgba(198,214,231,0.74);
+  --text-30:          rgba(182,201,221,0.64);
+  --border:           rgba(146,182,223,0.18);
+  --border-strong:    rgba(163,201,244,0.28);
+  --border-hover:     rgba(184,218,255,0.38);
+  --scrollbar:        rgba(146,182,223,0.28);
+  --scrollbar-hover:  rgba(184,218,255,0.46);
+  --breathe-lo:       rgba(92,163,255,0.18);
+  --breathe-hi:       rgba(92,163,255,0.34);
+  --card-shadow:      0 1px 0 rgba(255,255,255,0.04), 0 22px 60px rgba(0,0,0,0.42);
+  --nav-shadow:       0 1px 0 rgba(255,255,255,0.04), 0 18px 48px rgba(0,0,0,0.34);
+  --obs-ring:         none;
+  --bg-gradient:      radial-gradient(circle at 18% 16%, rgba(121,187,255,0.16), transparent 28%),
+                      radial-gradient(circle at 84% 12%, rgba(255,143,104,0.12), transparent 22%),
+                      radial-gradient(circle at 50% 100%, rgba(76,110,210,0.10), transparent 36%),
+                      linear-gradient(180deg, #02050b 0%, #040913 36%, #08101b 70%, #0c1521 100%);
+  /* HUD Variables (Dark Mode Defaults) */
+  --hud-overlay:      rgba(2, 5, 11, 0.84);
+  --hud-bg:           rgba(8, 16, 27, 0.96);
+  --hud-panel:        rgba(14, 22, 36, 0.92);
+  --hud-border:       rgba(163, 201, 244, 0.16);
+  --hud-text:         #f5fbff;
+  --hud-accent:       #79bbff;
+  --hud-stat-bg:      rgba(121, 187, 255, 0.08);
+}
+
+[data-theme="light"] {
+  --bg:               #eef4fb;
+  --bg-elevated:      #ffffff;
+  --bg-card:          rgba(255,255,255,0.92);
+  --bg-card-strong:   rgba(255,255,255,0.98);
+  --bg-nav:           rgba(245,248,252,0.92);
+  --bg-muted:         rgba(47,111,214,0.06);
+  --bg-muted-strong:  rgba(47,111,214,0.11);
+  --text:             #17212f;
+  --text-80:          rgba(23,33,47,0.90);
+  --text-60:          rgba(23,33,47,0.76);
+  --text-40:          rgba(23,33,47,0.62);
+  --text-30:          rgba(23,33,47,0.54);
+  --border:           rgba(23,33,47,0.11);
+  --border-strong:    rgba(23,33,47,0.17);
+  --border-hover:     rgba(23,33,47,0.24);
+  --scrollbar:        rgba(23,33,47,0.22);
+  --scrollbar-hover:  rgba(23,33,47,0.38);
+  --breathe-lo:       rgba(47,111,214,0.14);
+  --breathe-hi:       rgba(47,111,214,0.30);
+  --card-shadow:      0 1px 2px rgba(15,23,42,0.05), 0 18px 42px rgba(15,23,42,0.09);
+  --nav-shadow:       0 1px 0 rgba(15,23,42,0.06), 0 14px 30px rgba(15,23,42,0.07);
+  --obs-ring:         0 0 0 1px rgba(15,23,42,0.08), 0 10px 24px rgba(15,23,42,0.08);
+  --bg-gradient:      radial-gradient(circle at 16% 14%, rgba(82,145,226,0.14), transparent 28%),
+                      radial-gradient(circle at 86% 12%, rgba(232,132,90,0.12), transparent 20%),
+                      linear-gradient(180deg, #f5f8fc 0%, #e7eef7 44%, #dbe5f0 100%);
+  /* HUD Variables (Light Mode) */
+  --hud-overlay:      rgba(235, 240, 246, 0.84);
+  --hud-bg:           rgba(255, 255, 255, 0.98);
+  --hud-panel:        rgba(248, 250, 252, 0.96);
+  --hud-border:       rgba(23, 33, 47, 0.10);
+  --hud-text:         #17212f;
+  --hud-accent:       #2f6fd6;
+  --hud-stat-bg:      rgba(15, 23, 42, 0.04);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--bg);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color 0.3s, background-image 0.3s, color 0.3s;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+[style*="Orbitron"],
+.font-orbitron {
+  font-family: var(--font-display) !important;
+}
+
+[style*="Exo 2"] {
+  font-family: var(--font-body) !important;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+/* ─── Keyframe Animations ─── */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 15px var(--breathe-lo); }
+  50% { box-shadow: 0 0 30px var(--breathe-hi); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes marsApproach {
+  0% { transform: scale(0.3) translateY(80px); opacity: 0; }
+  60% { transform: scale(1.05) translateY(-10px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ─── Reusable Classes ─── */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s, transform 0.3s;
+}
+
+.glass-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.05), 0 26px 72px rgba(0,0,0,0.46);
+}
+
+.breathe-border {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+.nav-glass {
+  background: var(--bg-nav);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--nav-shadow);
+  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+/* 深色背景图表的"观测窗"样式——深色主题无边，浅色主题加圆角+投影 */
+.observation-window {
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 0.3s, border-radius 0.3s;
+}
+
+[data-theme="light"] .observation-window {
+  box-shadow: 0 0 0 1.5px rgba(26,26,46,0.14),
+              0 4px 20px rgba(26,26,46,0.14),
+              inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* 太空观测场景容器（DataOverviewPage 全屏）——浅色主题改用深空渐变而非纯黑 */
+.space-scene {
+  background: radial-gradient(circle at 18% 18%, rgba(121, 187, 255, 0.16), transparent 32%),
+              radial-gradient(circle at 80% 14%, rgba(255, 143, 104, 0.12), transparent 24%),
+              radial-gradient(circle at 50% 100%, rgba(76, 110, 210, 0.12), transparent 38%),
+              linear-gradient(180deg, #02050b 0%, #040913 38%, #08111b 70%, #0c1521 100%);
+}
+[data-theme="light"] .space-scene {
+  background: radial-gradient(circle at 18% 18%, rgba(82, 145, 226, 0.12), transparent 28%),
+              radial-gradient(circle at 80% 15%, rgba(232, 132, 90, 0.10), transparent 22%),
+              linear-gradient(180deg, #e5edf7 0%, #d5e1ee 48%, #c6d5e4 100%);
+}
+
+/* 固定深色面板（如 SettingsPanel）——无论主题如何都保留深色文字 */
+.panel-dark {
+  --text:             #f5fbff;
+  --text-60:          rgba(219,232,246,0.88);
+  --text-40:          rgba(198,214,231,0.78);
+  --text-30:          rgba(182,201,221,0.72);
+  --border:           rgba(163,201,244,0.16);
+  --border-hover:     rgba(184,218,255,0.34);
+}
+
+.page-enter {
+  animation: fadeInUp 0.6s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+
+.coverage-range-input {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.coverage-range-input:focus-visible {
+  outline: 2px solid rgba(121,187,255,0.58);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+.coverage-range-input::-webkit-slider-runnable-track {
+  height: 30px;
+  background: transparent;
+  border: 0;
+}
+
+.coverage-range-input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 6px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.92);
+  background: linear-gradient(135deg, #ff8f68, #ffb08e);
+  box-shadow: 0 0 0 4px rgba(255,143,104,0.16), 0 8px 18px rgba(0,0,0,0.28);
+  cursor: pointer;
+}
+
+.coverage-range-input::-moz-range-track {
+  height: 30px;
+  background: transparent;
+  border: 0;
+}
+
+.coverage-range-input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.92);
+  background: linear-gradient(135deg, #ff8f68, #ffb08e);
+  box-shadow: 0 0 0 4px rgba(255,143,104,0.16), 0 8px 18px rgba(0,0,0,0.28);
+  cursor: pointer;
+}

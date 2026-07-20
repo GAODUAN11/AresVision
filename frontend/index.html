@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AresVision 智绘赤星</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <script>
+      if (typeof window.global === 'undefined') {
+        window.global = window;
+      }
+      // 在 React 挂载前立即应用已保存的主题，避免深→浅闪烁
+      try {
+        var _s = JSON.parse(localStorage.getItem('aresvision_settings'));
+        if (_s && _s.theme) {
+          document.documentElement.setAttribute('data-theme', _s.theme);
+        }
+      } catch(e) {}
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

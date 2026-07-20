@@ -1,0 +1,43 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.3
+
+# Scientific data processing
+numpy==1.26.4
+scipy==1.14.1
+xarray==2024.11.0
+netCDF4==1.7.2
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# Deep learning (required by backend startup)
+torch==2.5.1
+
+# Metrics
+scikit-learn==1.6.0
+scikit-image==0.24.0
+shap==0.46.0
+
+# Cache
+cachetools==5.5.0
+
+# AI client
+httpx==0.28.1
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+aiosqlite==0.20.0
+
+# Authentication
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]==3.3.0
+
+# Utilities
+python-multipart==0.0.18
+orjson==3.10.12
+python-dotenv==1.0.1
+psutil==6.1.1
+email-validator==2.2.0
+

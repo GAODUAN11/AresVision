@@ -1,0 +1,124 @@
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  apiLogin,
+  apiRegister,
+  apiGetMe,
+  apiChangePassword,
+  fetchDataInfo,
+  fetchGlobeData,
+  prewarmPredictSource,
+} from '../services/api';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState('login');
+  const prewarmedKeysRef = useRef(new Set());
+
+  useEffect(() => {
+    const stored = localStorage.getItem('aresvision_token');
+    if (!stored) {
+      setIsLoading(false);
+      return;
+    }
+
+    apiGetMe()
+      .then((me) => {
+        setUser(me);
+        setToken(stored);
+      })
+      .catch(() => {
+        localStorage.removeItem('aresvision_token');
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+      setToken(null);
+    };
+    window.addEventListener('aresvision:logout', handler);
+    return () => window.removeEventListener('aresvision:logout', handler);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id || !token) return;
+    const warmKey = `${user.id}:${token}`;
+    if (prewarmedKeysRef.current.has(warmKey)) return;
+    prewarmedKeysRef.current.add(warmKey);
+
+    // Keep login-time warmup lightweight.
+    // Personal-source warmups are intentionally skipped here to avoid blocking
+    // default-source pages immediately after login.
+    const warmups = [
+      prewarmPredictSource(27, { dataSource: 'default' }),
+      fetchDataInfo({ dataSource: 'default' }),
+      fetchGlobeData(27, 0, 'o3col', null, { dataSource: 'default' }),
+    ];
+    Promise.allSettled(warmups).catch(() => {
+      // Do not block login UX on prewarm failure.
+    });
+  }, [user?.id, token]);
+
+  const login = useCallback(async (email, password) => {
+    const data = await apiLogin(email, password);
+    localStorage.setItem('aresvision_token', data.token);
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  }, []);
+
+  const register = useCallback(async (email, username, password, verificationCode) => {
+    await apiRegister(email, username, password, verificationCode);
+    return login(email, password);
+  }, [login]);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('aresvision_token');
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  const changePassword = useCallback(async (oldPassword, newPassword) => {
+    return apiChangePassword(oldPassword, newPassword);
+  }, []);
+
+  const openAuthModal = useCallback((tab = 'login') => {
+    setAuthModalTab(tab);
+    setAuthModalOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setAuthModalOpen(false);
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{
+      user,
+      token,
+      isLoading,
+      authModalOpen,
+      authModalTab,
+      login,
+      register,
+      logout,
+      changePassword,
+      openAuthModal,
+      closeAuthModal,
+    }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
+  return ctx;
+}

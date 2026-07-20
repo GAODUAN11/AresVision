@@ -1,0 +1,441 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import C from '../constants/colors';
+import { useT } from '../i18n';
+import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { useToast } from '../contexts/ToastContext';
+import ConfirmDialog from './ConfirmDialog';
+import ChangePasswordModal from './ChangePasswordModal';
+import NotificationPanel from './NotificationPanel';
+import { getPendingReviews, getUnreadCount } from '../services/api';
+
+const NAV_IDS = ['home', 'overview', 'training', 'predict', 'explore', 'ai', 'about'];
+
+function MarsLogoIcon() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="navMarsGrad" cx="33%" cy="30%" r="70%">
+          <stop offset="0%"   stopColor="#ec9268" />
+          <stop offset="40%"  stopColor="#c75b39" />
+          <stop offset="78%"  stopColor="#8b3a25" />
+          <stop offset="100%" stopColor="#3a1208" />
+        </radialGradient>
+      </defs>
+      <ellipse
+        cx="18" cy="18" rx="17" ry="5.5"
+        stroke="rgba(199,91,57,0.42)" strokeWidth="1"
+        fill="none"
+        transform="rotate(-22, 18, 18)"
+      />
+      <circle cx="18" cy="18" r="11" fill="url(#navMarsGrad)" />
+      <ellipse cx="18" cy="9.2" rx="3.6" ry="1.5" fill="rgba(248,240,225,0.58)" />
+      <ellipse
+        cx="21" cy="16" rx="2.8" ry="2.1"
+        fill="rgba(40,14,4,0.35)"
+        transform="rotate(-10, 21, 16)"
+      />
+    </svg>
+  );
+}
+
+
+function NavUserEntry({ t, isLight, onOpenAdmin, onOpenFeedback, pendingCount }) {
+  const { user, logout, openAuthModal } = useAuth();
+  const { showToast } = useToast();
+  const [dropOpen, setDropOpen] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
+  const [hovLogin, setHovLogin] = useState(false);
+  const [hovAdmin, setHovAdmin] = useState(false);
+  const [hovFeedback, setHovFeedback] = useState(false);
+  const wrapRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropOpen) return;
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setDropOpen(false);
+    };
+    const timer = setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('mousedown', handler); };
+  }, [dropOpen]);
+
+  const isAdmin = user?.role === 'admin';
+  const L = isLight;
+  const dropBg     = L ? 'var(--bg-card-strong)' : 'var(--bg-card-strong)';
+  const dropBorder = L ? 'var(--border)'         : 'var(--border)';
+  const dropShadow = L
+    ? '0 18px 44px rgba(15,23,42,0.12), 0 4px 14px rgba(15,23,42,0.08)'
+    : '0 18px 44px rgba(0,0,0,0.34), 0 4px 14px rgba(0,0,0,0.20)';
+  const labelClr   = 'var(--text)';
+  const dimClr     = 'var(--text-60)';
+  const hoverBg    = 'var(--bg-muted)';
+  const divClr     = 'var(--border)';
+
+  if (!user) {
+    return (
+      <div style={{ width: 130, display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => openAuthModal('login')}
+          onMouseEnter={() => setHovLogin(true)}
+          onMouseLeave={() => setHovLogin(false)}
+          style={{
+            background: 'none', border: 'none',
+            cursor: 'pointer', padding: '4px 0',
+            color: hovLogin ? C.mars : C.blue,
+            fontSize: 'calc(13px * var(--font-scale, 1))', fontWeight: 600,
+            textDecoration: hovLogin ? 'underline' : 'none',
+            textUnderlineOffset: 3,
+            transition: 'color 0.18s, text-decoration 0.18s',
+            fontFamily: 'inherit',
+            letterSpacing: 0,
+          }}
+        >
+          {t('auth.menuLogin')}
+        </button>
+      </div>
+    );
+  }
+
+  const initial = (user?.username || user?.email || "?")[0]?.toUpperCase() || "?";
+
+  return (
+    <>
+      <div ref={wrapRef} style={{ width: 130, display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
+        {/* Avatar button */}
+        <button
+          onClick={() => setDropOpen(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: dropOpen ? 'var(--bg-muted-strong)' : 'transparent',
+            border: `1px solid ${dropOpen ? 'var(--border-strong)' : 'transparent'}`, borderRadius: 10, padding: '5px 10px 5px 6px',
+            cursor: 'pointer', transition: 'background 0.15s',
+          }}
+        >
+          {/* Avatar circle */}
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: `linear-gradient(135deg, ${C.blue}, ${C.mars})`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 'calc(11px * var(--font-scale, 1))', fontWeight: 700, color: '#fff' }}>{initial}</span>
+          </div>
+          {/* Username */}
+          <div style={{ textAlign: 'left', maxWidth: 76, overflow: 'hidden' }}>
+            <div style={{
+              fontSize: 'calc(11px * var(--font-scale, 1))', fontWeight: 600, color: C.ice,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              lineHeight: 1.2,
+            }}>
+              {user.username || user.email}
+            </div>
+            {isAdmin && (
+              <div style={{
+                display: 'inline-block', fontSize: 'calc(9px * var(--font-scale, 1))', fontWeight: 700,
+                color: C.mars, letterSpacing: '0.06em',
+                background: 'rgba(199,91,57,0.10)',
+                borderRadius: 4, padding: '1px 5px', marginTop: 1,
+                lineHeight: 1.5,
+              }}>
+                {t('auth.roleAdmin').toUpperCase()}
+              </div>
+            )}
+          </div>
+        </button>
+
+        {/* Dropdown */}
+        {dropOpen && (
+          <div style={{
+            position: 'absolute', top: '100%', right: 0, marginTop: 6,
+            width: 220,
+            background: dropBg,
+            border: `1px solid ${dropBorder}`,
+            borderRadius: 11,
+            boxShadow: dropShadow,
+            backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+            padding: '6px 0',
+            zIndex: 3000,
+          }}>
+            {/* Email display */}
+            <div style={{ padding: '8px 16px 10px' }}>
+              <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: dimClr, wordBreak: 'break-all' }}>{user.email}</div>
+            </div>
+            <div style={{ height: 1, background: divClr, margin: '0 10px 4px' }} />
+
+            {/* Admin review — only for admin */}
+            {isAdmin && (
+              <>
+                <div
+                  onClick={() => { setDropOpen(false); onOpenAdmin?.(); }}
+                  onMouseEnter={() => setHovAdmin(true)}
+                  onMouseLeave={() => setHovAdmin(false)}
+                  style={{
+                    padding: '9px 16px', cursor: 'pointer',
+                    background: hovAdmin ? hoverBg : 'transparent',
+                    transition: 'background 0.1s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}
+                >
+                  <span style={{ fontSize: 'calc(13px * var(--font-scale, 1))', fontWeight: 500, color: labelClr, userSelect: 'none' }}>
+                    {t('admin.menuItem')}
+                  </span>
+                  {pendingCount > 0 && (
+                    <span style={{
+                      minWidth: 18, height: 18,
+                      background: C.mars, borderRadius: 9,
+                      fontSize: 'calc(10px * var(--font-scale, 1))', fontWeight: 700, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      padding: '0 5px', lineHeight: 1, flexShrink: 0,
+                    }}>
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </span>
+                  )}
+                </div>
+                <div
+                  onClick={() => { setDropOpen(false); onOpenFeedback?.(); }}
+                  onMouseEnter={() => setHovFeedback(true)}
+                  onMouseLeave={() => setHovFeedback(false)}
+                  style={{
+                    padding: '9px 16px', cursor: 'pointer',
+                    background: hovFeedback ? hoverBg : 'transparent',
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <span style={{ fontSize: 'calc(13px * var(--font-scale, 1))', fontWeight: 500, color: labelClr, userSelect: 'none' }}>
+                    {t('feedback.adminMenuItem')}
+                  </span>
+                </div>
+                <div style={{ height: 1, background: divClr, margin: '4px 10px' }} />
+              </>
+            )}
+
+            {/* Change password */}
+            <DropItem
+              label={t('auth.changePassword')}
+              onClick={() => { setDropOpen(false); setChangePwdOpen(true); }}
+              hoverBg={hoverBg} color={labelClr}
+            />
+
+            <div style={{ height: 1, background: divClr, margin: '4px 10px' }} />
+
+            {/* Logout */}
+            <DropItem
+              label={t('auth.menuLogout')}
+              onClick={() => { setDropOpen(false); setLogoutConfirm(true); }}
+              hoverBg={hoverBg} color={C.mars}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Logout confirm */}
+      {logoutConfirm && (
+        <ConfirmDialog
+          title={t('auth.logoutConfirmTitle')}
+          message={t('auth.logoutConfirmMsg')}
+          confirmLabel={t('auth.logoutConfirmBtn')}
+          cancelLabel={t('auth.cancelBtn')}
+          onConfirm={() => {
+            setLogoutConfirm(false);
+            logout();
+            showToast(t('auth.toastLoggedOut'), 'success');
+          }}
+          onCancel={() => setLogoutConfirm(false)}
+        />
+      )}
+
+      {/* Change password modal */}
+      {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)} />}
+    </>
+  );
+}
+
+function DropItem({ label, onClick, hoverBg, color }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        padding: '9px 16px', cursor: 'pointer',
+        background: hov ? hoverBg : 'transparent',
+        transition: 'background 0.1s',
+      }}
+    >
+      <span style={{ fontSize: 'calc(13px * var(--font-scale, 1))', fontWeight: 500, color, userSelect: 'none' }}>{label}</span>
+    </div>
+  );
+}
+
+export default function Navbar({ current, onChange, onOpenAdmin, onOpenFeedback, pendingRefreshSignal }) {
+  const t = useT();
+  const { settings } = useSettings();
+  const { user } = useAuth();
+  const isLight = settings.theme === 'light';
+  const isAdmin = user?.role === 'admin';
+
+  // 待审核数量（仅 admin 用户拉取）
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const fetchPendingCount = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const data = await getPendingReviews();
+      setPendingCount(Array.isArray(data) ? data.length : 0);
+    } catch {
+      // 静默失败，不影响导航栏渲染
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    fetchPendingCount();
+  }, [fetchPendingCount, pendingRefreshSignal]);
+
+  const handleOpenAdmin = useCallback(() => {
+    onOpenAdmin?.();
+    // 打开面板后延迟刷新计数（给面板操作留时间）
+    setTimeout(fetchPendingCount, 2000);
+  }, [onOpenAdmin, fetchPendingCount]);
+
+  // 未读通知数量（已登录用户拉取，60s 轮询）
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await getUnreadCount();
+      setUnreadCount(data.count ?? 0);
+    } catch {
+      // 静默失败
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchUnreadCount();
+    if (!user) return;
+    const timer = setInterval(fetchUnreadCount, 60000);
+    return () => clearInterval(timer);
+  }, [fetchUnreadCount, user]);
+
+  const navLabelStyle = (isActive) => ({
+    fontSize: 'calc(11px * var(--font-scale, 1))',
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    fontFamily: 'var(--font-display)',
+    color: isActive ? C.mars : C.ice60,
+    transition: 'color 0.25s',
+  });
+
+  const navBtnStyle = (isActive) => ({
+    background: isActive ? 'rgba(199,91,57,0.10)' : 'transparent',
+    border: `1px solid ${isActive ? 'rgba(199,91,57,0.22)' : 'transparent'}`,
+    borderBottom: `1px solid ${isActive ? 'rgba(199,91,57,0.22)' : 'transparent'}`,
+    borderRadius: 10,
+    padding: '10px 16px',
+    cursor: 'pointer',
+    transition: 'all 0.25s',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 2,
+  });
+
+  return (
+    <nav
+      className="nav-glass"
+      style={{
+        position: 'fixed', top: 0, left: 0, right: 0,
+        zIndex: 2000,
+        height: 70,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 48px',
+      }}
+    >
+      {/* Logo */}
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}
+        onClick={() => onChange('home')}
+      >
+        <MarsLogoIcon />
+        <div>
+          <div style={{
+            fontSize: 'calc(15px * var(--font-scale, 1))',
+            fontWeight: 700,
+            fontFamily: 'var(--font-display)',
+            color: C.ice,
+            letterSpacing: 0.6,
+            lineHeight: 1.2,
+          }}>
+            ARESVISION
+          </div>
+          <div style={{ fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice60, letterSpacing: 0.4 }}>
+            {t('nav.subtitle')}
+          </div>
+        </div>
+      </div>
+
+      {/* Nav Links */}
+      <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        {NAV_IDS.map((id) => (
+          <button
+            key={id}
+            onClick={() => onChange(id)}
+            style={navBtnStyle(current === id)}
+          >
+            <span style={navLabelStyle(current === id)}>
+              {id === 'explore'
+                ? (settings.language === 'zh' ? '数据管理' : 'Data Management')
+                : t(`nav.${id}`)}
+            </span>
+          </button>
+        ))}
+
+      </div>
+
+      {/* Right — bell + user entry */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {/* Bell icon — only for logged-in users */}
+        {user && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setNotifOpen(v => !v)}
+              title={t('notification.title')}
+              style={{
+                background: notifOpen ? 'var(--bg-muted-strong)' : 'transparent',
+                border: `1px solid ${notifOpen ? 'var(--border-strong)' : 'transparent'}`, borderRadius: 10, padding: '6px 8px',
+                cursor: 'pointer', display: 'flex', alignItems: 'center',
+                color: 'var(--text)',
+                transition: 'background 0.15s',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+            </button>
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: 4, right: 4,
+                width: 8, height: 8, borderRadius: '50%',
+                background: C.mars, pointerEvents: 'none',
+              }} />
+            )}
+          </div>
+        )}
+        <NavUserEntry t={t} isLight={isLight} onOpenAdmin={handleOpenAdmin} onOpenFeedback={onOpenFeedback} pendingCount={pendingCount} />
+      </div>
+
+      {/* Notification panel */}
+      <NotificationPanel
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        onReadCountChange={fetchUnreadCount}
+      />
+    </nav>
+  );
+}

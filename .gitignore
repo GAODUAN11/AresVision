@@ -1,0 +1,78 @@
+# Guard against accidentally mixing local workspace artifacts into the product repo
+/.planning/
+/tmp/
+/scratch/
+/projects/
+/Data/
+/docs/superpowers/
+
+# IDE / local tooling
+.idea/
+.vscode/
+.cursor/
+.claude/
+*.swp
+*.swo
+
+# Node / frontend build outputs
+frontend/node_modules/
+frontend/dist/
+frontend/vite-preview.err.log
+frontend/vite-preview.out.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python / caches
+**/__pycache__/
+**/*.py[cod]
+*.egg-info/
+.pytest_cache/
+**/.venv/
+**/venv/
+**/ENV/
+**/env/
+
+# Environment and local databases
+AresVision_backend/backend/.env
+*.db
+*.db-shm
+*.db-wal
+
+# Backend runtime datasets and generated caches
+AresVision_backend/backend/data/approved/
+AresVision_backend/backend/data/aresvision.db
+AresVision_backend/backend/data/mcd/
+AresVision_backend/backend/data/mcd_overview/
+AresVision_backend/backend/data/nomad/
+AresVision_backend/backend/data/openmars/
+AresVision_backend/backend/data/pending_review/
+AresVision_backend/backend/data/perf_cache/
+AresVision_backend/backend/data/personal_cache/
+AresVision_backend/backend/data/personal_processed/
+AresVision_backend/backend/data/processed_tensors.pt
+AresVision_backend/backend/data/training_weights/
+AresVision_backend/backend/data/user_models/
+AresVision_backend/backend/data/user_uploads/
+
+# Backend runtime outputs
+AresVision_backend/backend/logs/
+
+# Model weights and generated training outputs
+AresVision_backend/backend/models/predrnnv2/
+AresVision_backend/backend/models/训练结果/
+AresVision_backend/backend/models/训练过程/
+AresVision_backend/backend/models/**/__pycache__/
+*.pth
+*.pt
+*.h5
+
+# Temporary / backup files
+*.tmp
+*.bak
+*_backup.*
+~*
+
+# OS files
+.DS_Store
+Thumbs.db

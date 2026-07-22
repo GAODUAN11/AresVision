@@ -1,5 +1,7 @@
 # AresVision 智绘赤星
 
+[Kafuu7No/AresVision](https://github.com/Kafuu7No/AresVision)
+
 <div align="center">
   <img src="./assets/images/logo.png" width="200" alt="AresVision Logo" />
   <p align="center">

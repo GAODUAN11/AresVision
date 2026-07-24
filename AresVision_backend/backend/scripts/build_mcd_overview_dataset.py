@@ -1,9 +1,9 @@
 """
 Build the MCD-only overview dataset used by the data overview page.
 
-The backend runtime MCD files already define the target time and grid. Reference
-MCD files provide O3COL on a slightly different latitude grid, so this script
-interpolates ozone onto the runtime MCD coordinates and writes a compact dataset.
+The downloaded MCD reference files are the canonical source for the overview.
+The legacy runtime builder is retained for explicit rebuilds, but the default
+path keeps ozone and environmental variables from the same raw source.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from scipy.interpolate import interp1d
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parents[1]
+WORKSPACE_ROOT = REPO_ROOT.parent
+RAW_MCD_RELATIVE_DIR = Path("Data") / "MCD_Output_global_10m_ls_lst"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
@@ -269,7 +271,14 @@ def build_overview_from_reference_dataset(reference_path: Path, output_path: Pat
 
 
 def _default_reference_dir() -> Path:
-    return REPO_ROOT / "Data" / "MCD_Output_global_10m_ls_lst"
+    candidates = [
+        WORKSPACE_ROOT / RAW_MCD_RELATIVE_DIR,
+        REPO_ROOT / RAW_MCD_RELATIVE_DIR,
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]
 
 
 def build_year(
@@ -287,9 +296,9 @@ def build_year(
         raise FileNotFoundError(f"Missing reference MCD ozone file: {ozone_ref}")
     if mode not in {"auto", "runtime", "reference"}:
         raise ValueError("mode must be one of: auto, runtime, reference")
-    if mode in {"auto", "runtime"} and base_mcd.is_file():
-        return build_overview_dataset(base_mcd, ozone_ref, output_path)
     if mode == "runtime":
+        if base_mcd.is_file():
+            return build_overview_dataset(base_mcd, ozone_ref, output_path)
         raise FileNotFoundError(f"Missing backend MCD file: {base_mcd}")
 
     return build_overview_from_reference_dataset(ozone_ref, output_path)
@@ -301,7 +310,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reference-dir", type=Path, default=_default_reference_dir())
     parser.add_argument("--output-dir", type=Path, default=MCD_OVERVIEW_DIR)
     parser.add_argument("--base-mcd-dir", type=Path, default=MCD_DIR)
-    parser.add_argument("--mode", choices=["auto", "runtime", "reference"], default="auto")
+    parser.add_argument("--mode", choices=["auto", "runtime", "reference"], default="reference")
     return parser.parse_args()
 
 

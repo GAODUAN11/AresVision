@@ -7,12 +7,24 @@ from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parents[1]
+WORKSPACE_ROOT = REPO_ROOT.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from config import OVERVIEW_OZONE_MATCH_TOLERANCE_LS, SUPPORTED_MARS_YEARS  # noqa: E402
 from scripts.build_mcd_overview_dataset import build_year  # noqa: E402
 from scripts.build_nomad_gridded_dataset import build_nomad_gridded_datasets  # noqa: E402
+
+
+def _default_source_root() -> Path:
+    candidates = [
+        WORKSPACE_ROOT / "Data",
+        REPO_ROOT / "Data",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]
 
 
 def sync_openmars_files(source_dir: Path, target_dir: Path) -> list[Path]:
@@ -39,7 +51,7 @@ def ingest_mcd(source_root: Path, backend_data: Path, years: list[int]) -> list[
     base_mcd_dir = backend_data / "mcd"
     written: list[Path] = []
     for year in years:
-        written.append(build_year(year, reference_dir, output_dir, base_mcd_dir=base_mcd_dir, mode="auto"))
+        written.append(build_year(year, reference_dir, output_dir, base_mcd_dir=base_mcd_dir, mode="reference"))
     return written
 
 
@@ -66,7 +78,7 @@ def ingest_nomad(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest downloaded AresVision data sources into backend/data.")
-    parser.add_argument("--source-root", type=Path, default=REPO_ROOT / "Data")
+    parser.add_argument("--source-root", type=Path, default=_default_source_root())
     parser.add_argument("--backend-data", type=Path, default=BACKEND_DIR / "data")
     parser.add_argument("--only", choices=["all", "mcd", "openmars", "nomad"], default="all")
     parser.add_argument("--years", nargs="+", type=int, default=SUPPORTED_MARS_YEARS)

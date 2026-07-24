@@ -1,0 +1,145 @@
+import asyncio
+import importlib
+import json
+import sys
+import types
+from pathlib import Path
+from types import SimpleNamespace
+
+import torch
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+
+def install_service_import_stubs():
+    if "netCDF4" not in sys.modules:
+        netcdf4 = types.ModuleType("netCDF4")
+        netcdf4.Dataset = object
+        sys.modules["netCDF4"] = netcdf4
+
+    engine = types.ModuleType("database.engine")
+    engine.async_session_maker = None
+    sys.modules["database.engine"] = engine
+
+    models = types.ModuleType("database.models")
+    models.ModelTrainingTask = object
+    sys.modules["database.models"] = models
+
+
+def load_inference_module():
+    install_service_import_stubs()
+    sys.modules.pop("services.inference_service", None)
+    return importlib.import_module("services.inference_service")
+
+
+def build_legacy_task(tmp_path: Path):
+    model_path = tmp_path / "legacy-official.pth"
+    from core.predict_model import PredRNNv2
+
+    legacy_model = PredRNNv2(
+        input_dim=2,
+        hidden_dims=[1],
+        height=8,
+        width=8,
+        horizon=2,
+    )
+    torch.save(legacy_model.state_dict(), model_path)
+
+    hypers = {
+        "window": 3,
+        "horizon": 2,
+        "stlstm_hidden_dims": [1],
+        "selected_channels": ["U"],
+        "model_architecture": "predrnnv2",
+    }
+    task = SimpleNamespace(
+        id=7,
+        output_model_path=str(model_path),
+        hyperparameters=json.dumps(hypers),
+        custom_model_name="legacy-official",
+        model_source="official",
+        model_script="demo3-U.py",
+    )
+    return task, hypers
+
+
+def stub_prediction_data():
+    torch.manual_seed(0)
+    x_torch = torch.randn(6, 3, 2, 8, 8)
+    y_torch = torch.randn(6, 2, 1, 8, 8)
+    ls_torch = torch.tensor(
+        [
+            [10.0, 15.0, 20.0],
+            [25.0, 30.0, 35.0],
+            [40.0, 45.0, 50.0],
+            [55.0, 60.0, 65.0],
+            [70.0, 75.0, 80.0],
+            [85.0, 90.0, 95.0],
+        ],
+        dtype=torch.float32,
+    )
+    return x_torch, y_torch, ls_torch, 5.0, 2.0
+
+
+def test_predict_task_supports_legacy_official_weights(tmp_path):
+    inference_module = load_inference_module()
+    task, hypers = build_legacy_task(tmp_path)
+    service = inference_module.InferenceService()
+
+    async def fake_prepare_task_prediction_context(
+        task_id,
+        current_user=None,
+        data_service=None,
+        personal_source_service=None,
+    ):
+        assert task_id == 7
+        return task, hypers, {}, None
+
+    service._prepare_task_prediction_context = fake_prepare_task_prediction_context
+    service._prepare_data = lambda used_mcd_vars, window, horizon, data_dirs=None: stub_prediction_data()
+
+    result = asyncio.run(
+        service.predict_task(
+            task_id=7,
+            mars_year=27,
+            ls_start=90.0,
+            horizon=2,
+        )
+    )
+
+    assert result["horizon"] == 2
+    assert result["model_info"]["training_model_source"] == "official"
+    assert result["selected_variables"] == ["U_Wind"]
+    assert len(result["prediction"]) == 2
+
+
+def test_task_test_set_metrics_supports_legacy_official_weights(tmp_path):
+    inference_module = load_inference_module()
+    task, hypers = build_legacy_task(tmp_path)
+    service = inference_module.InferenceService()
+
+    async def fake_prepare_task_prediction_context(
+        task_id,
+        current_user=None,
+        data_service=None,
+        personal_source_service=None,
+    ):
+        assert task_id == 7
+        return task, hypers, {}, None
+
+    service._prepare_task_prediction_context = fake_prepare_task_prediction_context
+    service._prepare_data = lambda used_mcd_vars, window, horizon, data_dirs=None: stub_prediction_data()
+
+    result = asyncio.run(
+        service.task_test_set_metrics(
+            task_id=7,
+            mars_year=27,
+            ls_start=90.0,
+            horizon=2,
+        )
+    )
+
+    assert result["overall"]["step"] == 0
+    assert len(result["per_step"]) == 2

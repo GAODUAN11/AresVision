@@ -12,17 +12,18 @@ from services.data_service import DataService  # noqa: E402
 from services.mcd_overview_data_service import McdOverviewDataService  # noqa: E402
 
 
-def test_overview_service_exposes_mcd_ozone_on_mcd_time_axis():
+def test_overview_service_exposes_reference_mcd_ozone_and_env_fields():
     base = DataService()
     service = McdOverviewDataService(base)
 
     overview = service.get_openmars_data(27)
     aligned = service.get_aligned_mcd_data(27)
 
-    assert overview["o3col"].shape[0] == 669
+    assert overview["o3col"].shape[0] == 687
     assert overview["o3col"].shape[1:] == (36, 72)
     assert aligned["Temperature"].shape == overview["o3col"].shape
-    assert aligned["Dust_Optical_Depth"].shape == overview["o3col"].shape
+    assert np.isnan(aligned["Dust_Optical_Depth"]).all()
+    assert float(np.nanmin(aligned["Temperature"])) > 100.0
 
 
 def test_overlay_payload_reports_only_available_sources():

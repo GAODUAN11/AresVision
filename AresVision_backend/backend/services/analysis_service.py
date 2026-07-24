@@ -434,26 +434,26 @@ class AnalysisService:
             band_peak_ls.append(peak_ls)
 
         global_o3 = self._nanmean_no_warn(o3, axis=(1, 2))
-        global_dust = self._nanmean_no_warn(am["Dust_Optical_Depth"], axis=(1, 2)) if "Dust_Optical_Depth" in am else np.full_like(global_o3, np.nan)
-        global_temp = self._nanmean_no_warn(am["Temperature"], axis=(1, 2)) if "Temperature" in am else np.full_like(global_o3, np.nan)
-        global_solar = self._nanmean_no_warn(am["Solar_Flux_DN"], axis=(1, 2)) if "Solar_Flux_DN" in am else np.full_like(global_o3, np.nan)
-
-        if "U_Wind" in am and "V_Wind" in am:
-            wind_speed = np.sqrt(am["U_Wind"] ** 2 + am["V_Wind"] ** 2)
-            global_wind = self._nanmean_no_warn(wind_speed, axis=(1, 2))
-        else:
-            global_wind = np.full_like(global_o3, np.nan)
-
         step = max(1, len(ls_arr) // MAX_LS_POINTS)
         ls_ds = ls_arr[::step]
 
-        trend_series = {
-            "o3": self._zscore(global_o3[::step]),
-            "dust": self._zscore(global_dust[::step]),
-            "temp": self._zscore(global_temp[::step]),
-            "solar": self._zscore(global_solar[::step]),
-            "wind": self._zscore(global_wind[::step]),
-        }
+        trend_series = {}
+
+        def add_trend_series(key: str, values: np.ndarray) -> None:
+            sampled = np.asarray(values, dtype=float)[::step]
+            if np.any(np.isfinite(sampled)):
+                trend_series[key] = self._zscore(sampled)
+
+        add_trend_series("o3", global_o3)
+        if "Dust_Optical_Depth" in self.mcd_variables and "Dust_Optical_Depth" in am:
+            add_trend_series("dust", self._nanmean_no_warn(am["Dust_Optical_Depth"], axis=(1, 2)))
+        if "Temperature" in self.mcd_variables and "Temperature" in am:
+            add_trend_series("temp", self._nanmean_no_warn(am["Temperature"], axis=(1, 2)))
+        if "Solar_Flux_DN" in self.mcd_variables and "Solar_Flux_DN" in am:
+            add_trend_series("solar", self._nanmean_no_warn(am["Solar_Flux_DN"], axis=(1, 2)))
+        if "U_Wind" in self.mcd_variables and "V_Wind" in self.mcd_variables and "U_Wind" in am and "V_Wind" in am:
+            wind_speed = np.sqrt(am["U_Wind"] ** 2 + am["V_Wind"] ** 2)
+            add_trend_series("wind", self._nanmean_no_warn(wind_speed, axis=(1, 2)))
 
         time_mean = self._nanmean_no_warn(o3, axis=0)
         zonal_mean = self._nanmean_no_warn(time_mean, axis=1, keepdims=True)
@@ -568,17 +568,17 @@ class AnalysisService:
         return float(np.corrcoef(xv, yv)[0, 1])
 
     @staticmethod
-    def _zscore(arr: np.ndarray) -> list[float]:
+    def _zscore(arr: np.ndarray) -> list[float | None]:
         values = np.asarray(arr, dtype=float)
         valid = values[np.isfinite(values)]
         if valid.size == 0:
-            return [float("nan")] * len(values)
+            return [None] * len(values)
         mean_v = float(np.mean(valid))
         std_v = float(np.std(valid))
         if std_v == 0:
-            return [0.0 if np.isfinite(v) else float("nan") for v in values]
+            return [0.0 if np.isfinite(v) else None for v in values]
         out = (values - mean_v) / std_v
-        return [float(v) if np.isfinite(v) else float("nan") for v in out]
+        return [float(v) if np.isfinite(v) else None for v in out]
 
     @staticmethod
     def _nanmean_no_warn(arr: np.ndarray, axis=None, keepdims=False):

@@ -8,13 +8,21 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from scripts.build_mcd_overview_dataset import build_overview_dataset  # noqa: E402
+from scripts.build_mcd_overview_dataset import (  # noqa: E402
+    _default_reference_dir,
+    build_overview_dataset,
+    build_year,
+)
+
+
+def _workspace_reference_dir() -> Path:
+    return Path(__file__).resolve().parents[4] / "Data" / "MCD_Output_global_10m_ls_lst"
 
 
 def test_build_overview_dataset_creates_backend_runtime_shape(tmp_path):
     repo_root = Path(__file__).resolve().parents[3]
     base_mcd = repo_root / "AresVision_backend" / "backend" / "data" / "mcd" / "MCD_MY27_Lat-90-90_real.nc"
-    ozone_ref = repo_root / "Data" / "MCD_Output_global_10m_ls_lst" / "MCD_MY27_global_3h_5deg_10m_ls_lst.nc"
+    ozone_ref = _workspace_reference_dir() / "MCD_MY27_global_3h_5deg_10m_ls_lst.nc"
     output_path = tmp_path / "MCD_MY27_overview.nc"
 
     build_overview_dataset(base_mcd, ozone_ref, output_path)
@@ -36,13 +44,7 @@ def test_build_overview_dataset_creates_backend_runtime_shape(tmp_path):
 
 
 def test_build_overview_from_reference_dataset_creates_direct_mcd_overview(tmp_path):
-    repo_root = Path(__file__).resolve().parents[3]
-    reference_path = (
-        repo_root
-        / "Data"
-        / "MCD_Output_global_10m_ls_lst"
-        / "MCD_MY34_global_3h_5deg_10m_ls_lst.nc"
-    )
+    reference_path = _workspace_reference_dir() / "MCD_MY34_global_3h_5deg_10m_ls_lst.nc"
     output_path = tmp_path / "MCD_MY34_overview.nc"
 
     from scripts.build_mcd_overview_dataset import build_overview_from_reference_dataset
@@ -68,5 +70,30 @@ def test_build_overview_from_reference_dataset_creates_direct_mcd_overview(tmp_p
         assert float(ds["Ls"].max()) < 360.0
         assert float(ds["o3col"].isnull().mean()) < 0.05
         assert ds.attrs["build_mode"] == "reference_direct"
+    finally:
+        ds.close()
+
+
+def test_default_reference_dir_prefers_workspace_data_directory():
+    assert _default_reference_dir() == _workspace_reference_dir()
+
+
+def test_build_year_auto_uses_downloaded_reference_dataset(tmp_path):
+    repo_root = Path(__file__).resolve().parents[3]
+    base_mcd_dir = repo_root / "AresVision_backend" / "backend" / "data" / "mcd"
+
+    output_path = build_year(
+        28,
+        _workspace_reference_dir(),
+        tmp_path,
+        base_mcd_dir=base_mcd_dir,
+        mode="auto",
+    )
+
+    ds = xr.open_dataset(output_path)
+    try:
+        assert ds.attrs["build_mode"] == "reference_direct"
+        assert ds["Ls"].shape == (687,)
+        assert float(ds["Temperature"].min()) > 100.0
     finally:
         ds.close()

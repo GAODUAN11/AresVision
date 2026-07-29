@@ -70,6 +70,33 @@ test('system distribution key ignores Ls but follows selected variables', () => 
   );
 });
 
+test('system prediction metrics key does not include personal data source mode', () => {
+  const base = {
+    modelMode: 'system',
+    selectedVars: ['Temperature'],
+    marsYear: 27,
+    lsStart: 90,
+    horizon: 3,
+  };
+
+  assert.equal(
+    buildPredictMetricsKey({ ...base, dataSourceMode: 'default' }),
+    buildPredictMetricsKey({ ...base, dataSourceMode: 'personal' })
+  );
+});
+
+test('system distribution key no longer disables personal mode branches', () => {
+  const base = {
+    modelMode: 'system',
+    selectedVars: ['Temperature'],
+  };
+
+  assert.equal(
+    buildErrorDistributionKey({ ...base, dataSourceMode: 'default' }),
+    buildErrorDistributionKey({ ...base, dataSourceMode: 'personal' })
+  );
+});
+
 test('training model comparison key is stable for reordered task ids', () => {
   assert.equal(
     buildTrainingModelCompareKey({ taskIds: [18, 12, 23], horizon: 3, compareType: 'metrics' }),

@@ -8,7 +8,6 @@ const FULL_VISIBILITY = {
   shapley: true,
   inputVariables: true,
   systemHyperparams: true,
-  dataSourceControl: true,
   trainedModelParameters: true,
   compareSummary: false,
   compareMetricBars: false,
@@ -31,7 +30,6 @@ export function getPredictAnalysisVisibility(modelMode = 'system') {
       shapley: false,
       inputVariables: false,
       systemHyperparams: false,
-      dataSourceControl: false,
       trainedModelParameters: false,
       compareSummary: true,
       compareMetricBars: true,
@@ -48,7 +46,6 @@ export function getPredictAnalysisVisibility(modelMode = 'system') {
     shapley: false,
     inputVariables: false,
     systemHyperparams: false,
-    dataSourceControl: false,
     trainedModelParameters: true,
   };
 }

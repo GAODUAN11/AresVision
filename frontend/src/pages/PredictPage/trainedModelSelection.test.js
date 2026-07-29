@@ -63,7 +63,7 @@ test('builds display parameters from selected trained model task hyperparameters
   assert.deepEqual(items.map((item) => [item.label, item.value]), [
     ['Model name', 'MY27 UVDST'],
     ['Task ID', '#8'],
-    ['Source', 'Personal data'],
+    ['Source', 'Server-managed data'],
     ['Model type', 'Official'],
     ['Architecture', 'ConvLSTM'],
     ['SPHERE', 'On'],

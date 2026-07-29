@@ -96,11 +96,11 @@ export default function WorkflowConfigPanel({ config, onUpdateConfig }) {
   const text = createWorkflowText(settings.language);
   const panelTitle = settings.language === 'en' ? 'Shared Workflow Settings' : '共享流程设置';
   const panelSubtitle = settings.language === 'en'
-    ? 'Keep data source, Mars context, and training parameters outside the canvas so the graph stays focused on model flow.'
-    : '将数据源、火星环境和训练参数固定在画布外，让画布只表达模型流程。';
+    ? 'Keep server data, Mars context, and training parameters outside the canvas so the graph stays focused on model flow.'
+    : '将服务器数据、火星环境和训练参数固定在画布外，让画布只表达模型流程。';
   const sourceSubtitle = settings.language === 'en'
-    ? 'Used by prediction requests and training drafts.'
-    : '同时用于预测请求和训练草稿。';
+    ? 'Prediction and training drafts use administrator-managed server data.'
+    : '预测请求和训练草稿使用管理员维护的服务器数据。';
   const contextSubtitle = settings.language === 'en'
     ? 'Sets the planetary context for the current prediction request.'
     : '设置当前预测请求的火星环境。';
@@ -171,14 +171,18 @@ export default function WorkflowConfigPanel({ config, onUpdateConfig }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.45fr', gap: 12, alignItems: 'start' }}>
         <ConfigCard title={text.inspector.fields.dataSource} subtitle={sourceSubtitle}>
           <Field label={text.inspector.fields.dataSource}>
-            <select
-              value={config.dataSource || 'default'}
-              onChange={(event) => onUpdateConfig({ dataSource: event.target.value })}
-              style={inputStyle()}
+            <div
+              style={{
+                ...inputStyle(),
+                display: 'flex',
+                alignItems: 'center',
+                background: 'rgba(74,158,255,0.08)',
+                color: C.blue,
+                fontWeight: 700,
+              }}
             >
-              <option value="default">{text.source.defaultOption}</option>
-              <option value="personal">{text.source.personalOption}</option>
-            </select>
+              {text.source.defaultOption}
+            </div>
           </Field>
         </ConfigCard>
 

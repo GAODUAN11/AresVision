@@ -34,12 +34,16 @@ function metricValue(item, metric) {
   return Number.isFinite(value) ? value : null;
 }
 
+export function normalizeCompareDataSource() {
+  return 'default';
+}
+
 export function buildCompareModelSummary(task) {
   const hypers = parseHyperparameters(task?.hyperparameters);
   const selectedChannels = normalizeChannels(hypers.selected_channels);
   const modelSource = String(hypers.model_source || task?.model_source || 'official').toLowerCase();
   const architecture = String(hypers.model_architecture || (modelSource === 'uploaded' ? 'uploaded' : 'predrnnv2')).toLowerCase();
-  const dataSource = String(hypers._effective_data_source || hypers._data_source || 'default').toLowerCase();
+  const dataSource = normalizeCompareDataSource(hypers._effective_data_source || hypers._data_source);
   const taskId = Number(task?.id);
 
   return {
@@ -84,7 +88,7 @@ export function buildCompareParameterRows(items = []) {
       learningRate: formatValue(hypers.learning_rate),
       earlyStoppingPatience: formatValue(hypers.early_stopping_patience),
       seed: formatValue(hypers.seed),
-      dataSource: formatValue(hypers._effective_data_source || hypers._data_source || 'default'),
+      dataSource: formatValue(normalizeCompareDataSource(hypers._effective_data_source || hypers._data_source)),
     };
   });
 }

@@ -171,7 +171,7 @@ export default function WorkflowInspector({
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 13 }}>
-          <SummaryRow label={text.inspector.summary.dataSource} value={predictionConfig?.dataSource === 'personal' ? text.source.personal : predictionConfig?.dataSource === 'default' ? text.source.default : text.inspector.noValue} accent={C.blue} />
+          <SummaryRow label={text.inspector.summary.dataSource} value={predictionConfig ? text.source.default : text.inspector.noValue} accent={C.blue} />
           <SummaryRow label={text.inspector.summary.marsContext} value={predictionConfig ? `MY ${predictionConfig.marsYear} · Ls ${predictionConfig.lsStart}` : text.inspector.noValue} />
           <SummaryRow label={text.inspector.summary.variables} value={predictionConfig?.selectedVariables?.length ? predictionConfig.selectedVariables.join(', ') : text.inspector.baseline} />
           <SummaryRow label={text.inspector.summary.predictionHorizon} value={predictionConfig ? `+${predictionConfig.horizon}` : text.inspector.noValue} accent={C.mars} />

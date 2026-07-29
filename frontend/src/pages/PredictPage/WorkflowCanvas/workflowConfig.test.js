@@ -70,7 +70,7 @@ test('migrates legacy config nodes into external workflow config and removes the
       architecture_params_by_model: undefined,
     },
   }, {
-    dataSource: 'personal',
+    dataSource: 'default',
     marsYear: 28,
     lsStart: 127.5,
     training: {

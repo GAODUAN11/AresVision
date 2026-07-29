@@ -63,62 +63,6 @@ function OptionChips({ items, activeValue, onChange, disabled = false }) {
   );
 }
 
-function ToggleSwitch({ checked, onChange, disabled = false, personalDisabled = false, isLight = false }) {
-  const { settings } = useSettings();
-  const isZh = settings?.language !== 'en';
-  const options = [
-    { value: 'default', label: isZh ? '\u9ed8\u8ba4' : 'Default', active: !checked },
-    { value: 'personal', label: isZh ? '\u4e2a\u4eba' : 'Personal', active: checked },
-  ];
-
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 8,
-        padding: 5,
-        width: '100%',
-        minWidth: 0,
-        borderRadius: 16,
-        background: isLight ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.03)',
-        border: `1px solid ${C.border}`,
-        boxSizing: 'border-box',
-      }}
-    >
-      {options.map((option) => {
-        const optionDisabled = disabled || (personalDisabled && option.value === 'personal');
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => {
-              if (!optionDisabled && !option.active) {
-                onChange(option.value === 'personal');
-              }
-            }}
-            disabled={optionDisabled}
-            style={{
-              padding: '10px 12px',
-              borderRadius: 12,
-              border: 'none',
-              background: option.active ? 'rgba(74,158,255,0.14)' : 'transparent',
-              color: option.active ? C.blue : C.ice60,
-              fontSize: 'calc(12px * var(--font-scale, 1))',
-              fontWeight: option.active ? 700 : 600,
-              cursor: optionDisabled ? 'not-allowed' : 'pointer',
-              opacity: optionDisabled ? 0.5 : 1,
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function ActionButton({ children, secondary = false, disabled = false, onClick, accent = C.mars }) {
   return (
     <button
@@ -523,11 +467,6 @@ export default function PredictSidebar({
   trainingTasksLoading = false,
   selectedTrainingOption,
   analysisVisibility = {},
-  dataSourceMode,
-  setDataSourceMode,
-  sourceMeta,
-  personalSourceDisabled = false,
-  personalSourceHint = '',
   marsYear,
   setMarsYear,
   availableMarsYears,
@@ -552,26 +491,17 @@ export default function PredictSidebar({
   const t = useT();
   const { settings } = useSettings();
   const isZh = settings?.language !== 'en';
-  const isPersonalMode = dataSourceMode === 'personal';
   const canShowShapley = analysisVisibility.shapley !== false;
   const canShowInputVariables = analysisVisibility.inputVariables !== false;
   const canShowPerformanceComparison = analysisVisibility.performanceComparison !== false;
   const canShowSelectionPerformance = analysisVisibility.selectionPerformance !== false;
   const canShowSystemHyperparams = analysisVisibility.systemHyperparams !== false;
-  const canShowDataSourceControl = analysisVisibility.dataSourceControl !== false;
-  const isTrainedMode = modelMode === PREDICT_MODEL_MODE_TRAINED;
   const isCompareMode = modelMode === PREDICT_MODEL_MODE_COMPARE;
   const compareSelection = getCompareSelectionState(selectedCompareTrainingTaskIds);
 
   const years = Array.isArray(availableMarsYears) && availableMarsYears.length > 0
     ? availableMarsYears
     : [27, 28];
-
-  const sourceMessage = sourceMeta?.message || (
-    sourceMeta?.effective_source === 'personal_mcd_plus_system_openmars'
-      ? (isZh ? '个人 OpenMARS 数据不完整，系统已自动补充 OpenMARS 与个人 MCD。' : 'Personal OpenMARS is incomplete. The system is using system OpenMARS with personal MCD.')
-      : ''
-  );
 
   const handleSeed32 = () => {
     const vars = ['Temperature', 'Dust_Optical_Depth', 'Solar_Flux_DN', 'U_Wind', 'V_Wind'];
@@ -646,7 +576,7 @@ export default function PredictSidebar({
             accent={isCompareMode ? C.green : C.mars}
           >
             {(loading || isSwitchingSource) ? (
-              isSwitchingSource ? (isZh ? '切换数据源中…' : 'Switching data source...') : t('predict.runningBtn')
+              isSwitchingSource ? (isZh ? '加载数据中…' : 'Loading data...') : t('predict.runningBtn')
             ) : isCompareMode ? (isZh ? '开始对比' : 'Start comparison') : t('predict.runBtn')}
           </ActionButton>
 
@@ -668,56 +598,11 @@ export default function PredictSidebar({
       <GlowCard style={{ padding: 20 }}>
         <SectionTitle
           title={t('predict.sidebar.parameters')}
-          subtitle={isZh ? '调整数据来源、火星年和起始黄经。' : 'Adjust the source, Mars year, and starting solar longitude.'}
+          subtitle={isZh ? '调整火星年和起始太阳黄经。预测数据由服务器后台维护。' : 'Adjust Mars year and starting solar longitude. Prediction data is server-managed.'}
           accent={C.mars}
         />
 
         <div style={{ display: 'grid', gap: 16 }}>
-          {canShowDataSourceControl ? (
-            <div style={{ padding: '12px 14px', borderRadius: 14, border: `1px solid ${C.border}`, background: C.bgMuted }}>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div>
-                <div style={{ color: C.ice, fontSize: 'calc(12px * var(--font-scale, 1))', fontWeight: 600 }}>
-                  {isZh ? '数据源' : 'Data source'}
-                </div>
-                <div style={{ color: isPersonalMode ? C.blue : C.ice50, fontSize: 'calc(11px * var(--font-scale, 1))', marginTop: 3 }}>
-                  {isPersonalMode ? (isZh ? '当前使用个人数据' : 'Currently using personal data') : (isZh ? '当前使用系统默认数据' : 'Currently using the default system data')}
-                </div>
-              </div>
-              <ToggleSwitch
-                checked={isPersonalMode}
-                disabled={isSwitchingSource || isTrainedMode}
-                personalDisabled={personalSourceDisabled}
-                isLight={isLight}
-                onChange={() => setDataSourceMode(isPersonalMode ? 'default' : 'personal')}
-              />
-            </div>
-
-            {personalSourceDisabled ? (
-              <div style={{ marginTop: 8, fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice40, lineHeight: 1.5 }}>
-                {personalSourceHint}
-              </div>
-            ) : null}
-
-            {isSwitchingSource ? (
-              <div style={{ marginTop: 8, fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice50, lineHeight: 1.5 }}>
-                {isZh ? '正在切换数据源，请稍候…' : 'Switching data source, please wait...'}
-              </div>
-            ) : null}
-
-            {sourceMessage ? (
-              <div style={{ marginTop: 8, fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice50, lineHeight: 1.55 }}>
-                {sourceMessage}
-              </div>
-            ) : null}
-            {isTrainedMode ? (
-              <div style={{ marginTop: 8, fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice50, lineHeight: 1.55 }}>
-                {isZh ? '训练模型使用任务记录里的数据来源。' : 'Trained models use the data source recorded by the training task.'}
-              </div>
-            ) : null}
-            </div>
-          ) : null}
-
           <div>
             <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice50, marginBottom: 8 }}>
               {t('predict.marsYear')}

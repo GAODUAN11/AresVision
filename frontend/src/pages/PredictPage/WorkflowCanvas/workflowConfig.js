@@ -12,6 +12,12 @@ export const EXTERNAL_WORKFLOW_NODE_TYPES = new Set([
   WORKFLOW_NODE_TYPES.TRAINING_CONFIG,
 ]);
 
+export function normalizeWorkflowDataSource() {
+  // Prediction and training datasets are server-managed; legacy non-default values
+  // are treated as the default server source.
+  return DEFAULT_DATA_SOURCE_CONFIG.dataSource;
+}
+
 function cloneTrainingConfig(training = DEFAULT_TRAINING_CONFIG) {
   const architectureParamsByModel = training.architecture_params_by_model || {};
   return {
@@ -31,7 +37,7 @@ function cloneTrainingConfig(training = DEFAULT_TRAINING_CONFIG) {
 
 export function getDefaultWorkflowConfig() {
   return {
-    dataSource: DEFAULT_DATA_SOURCE_CONFIG.dataSource,
+    dataSource: normalizeWorkflowDataSource(),
     marsYear: DEFAULT_CONTEXT_CONFIG.marsYear,
     lsStart: DEFAULT_CONTEXT_CONFIG.lsStart,
     training: cloneTrainingConfig(DEFAULT_TRAINING_CONFIG),
@@ -46,7 +52,7 @@ export function normalizeWorkflowConfig(config = {}) {
   });
 
   return {
-    dataSource: config.dataSource || defaults.dataSource,
+    dataSource: normalizeWorkflowDataSource(config.dataSource),
     marsYear: config.marsYear ?? defaults.marsYear,
     lsStart: config.lsStart ?? defaults.lsStart,
     training,

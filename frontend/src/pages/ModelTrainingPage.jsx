@@ -9,7 +9,6 @@ import {
   startTrainingTask,
   stopTrainingTask,
   deleteTrainingTask,
-  fetchDataInfo,
   uploadUserModel,
   fetchUserModels,
   getUserModelDownloadUrl,
@@ -19,13 +18,6 @@ import {
   fetchTrainingWeights,
   deleteTrainingWeight,
 } from '../services/api';
-import {
-  getPersonalSourceAvailability,
-  getPersonalSourceBlockedMessage,
-  getPersonalSourceCheckFailedMessage,
-  getPersonalSourceLoginRequiredMessage,
-  isPersonalSourceInsufficient,
-} from '../utils/personalSourceGuard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModelTestModal from '../components/ModelTestModal';
 import TrainingProgressMonitor from '../components/TrainingProgressMonitor';
@@ -61,9 +53,12 @@ import {
   TRAINING_TASK_HANDOFF_KEY,
   buildTrainingTaskHandoff,
 } from './PredictPage/trainedModelSelection';
+import {
+  getTrainingRequestDataSource,
+  getTrainingSourceLabel,
+} from './ModelTrainingPage/trainingDataSource';
 
 const MONO_FONT = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
-const PERSONAL_BOUNCE_MS = 720;
 const UNIFIED_TRAINING_SCRIPT = 'demo3.py';
 const OPEN_INTERVAL_FLOAT_FIELDS = new Set(['initial_history_weight', 'initial_translation_weight']);
 const MODEL_ARCHITECTURES = [
@@ -167,9 +162,8 @@ function getModelArchitectureLabel(value) {
   return MODEL_ARCHITECTURES.find((item) => item.id === normalized)?.label || MODEL_ARCHITECTURES[0].label;
 }
 
-function getSourceModeLabel(source, copy) {
-  if (!source) return '--';
-  return source === 'personal' ? copy.sourcePersonal : copy.sourceDefault;
+function getSourceModeLabel(_source, copy) {
+  return copy.sourceDefault;
 }
 
 function formatTaskDate(value, locale) {
@@ -573,7 +567,7 @@ function TrainingTaskCard({
 export default function ModelTrainingPage() {
   const t = useT();
   const { settings } = useSettings();
-  const { user, isLoading, openAuthModal } = useAuth();
+  const { user, openAuthModal } = useAuth();
   const { showToast } = useToast();
   const isLight = settings.theme === 'light';
   const isZh = settings.language !== 'en';
@@ -594,11 +588,6 @@ export default function ModelTrainingPage() {
   const [scripts, setScripts] = useState([]);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsError, setScriptsError] = useState('');
-  const [isSwitchingSource, setIsSwitchingSource] = useState(false);
-  const [dataSourceMode, setDataSourceMode] = useState('default');
-  const [switchPreviewMode, setSwitchPreviewMode] = useState(null);
-  const [sourceMeta, setSourceMeta] = useState(null);
-
   const logContainerRef = useRef(null);
   const autoScrollRef = useRef(true);
 
@@ -626,14 +615,10 @@ export default function ModelTrainingPage() {
       datasetHintMcdOverview: isZh
         ? '使用 data/mcd_overview 中的整体 MCD overview 数据，覆盖 MY24-MY35。'
         : 'Use the full MCD overview corpus from data/mcd_overview, covering MY24-MY35.',
-      sourceDefault: isZh ? '默认系统数据' : 'Default source',
-      sourcePersonal: isZh ? '个人 / 混合数据' : 'Personal / mixed source',
+      sourceDefault: getTrainingSourceLabel('default', { isZh }),
       sourceHintDefault: isZh
-        ? '训练将使用平台默认数据源。'
-        : 'Training will run against the platform default data source.',
-      sourceHintPersonal: isZh
-        ? '训练将使用你的个人或混合数据源。'
-        : 'Training will run against your personal or mixed data source.',
+        ? '训练数据由管理员在服务器后台维护，普通用户不再切换自有融合数据。'
+        : 'Training data is maintained by administrators on the server; user-managed fused datasets are no longer selectable here.',
       trainingPreset: isZh ? '训练预设' : 'Training preset',
       trainingSummary: isZh ? '训练摘要' : 'Training summary',
       presetLoading: isZh ? '正在加载训练脚本...' : 'Loading training presets...',
@@ -800,8 +785,6 @@ export default function ModelTrainingPage() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [architecturePickerOpen, setArchitecturePickerOpen] = useState(false);
 
-  const displayDataSourceMode = switchPreviewMode || dataSourceMode;
-  const isPersonalMode = displayDataSourceMode === 'personal';
   const modelNameLabel = String(t('modelTraining.modelName') || '')
     .replace(':', '')
     .replace('：', '')
@@ -862,14 +845,6 @@ export default function ModelTrainingPage() {
         .slice(0, 2)
         .map((field) => `${getModelStructureParamLabel(field.key, structureLabelLanguage)}: ${activeStructureParams[field.key] ?? field.defaultValue}`)
         .join(' / ') || getModelArchitectureLabel(normalizedModelArchitecture);
-
-  const sourceMessage =
-    sourceMeta?.message ||
-    (sourceMeta?.effective_source === 'personal_mcd_plus_system_openmars'
-      ? (isZh
-          ? '个人 OpenMARS 数据不完整，系统会自动补充默认 OpenMARS 与个人 MCD。'
-          : 'Personal OpenMARS is incomplete. The system will use default OpenMARS with personal MCD.')
-      : '');
 
   const selectedScriptAvailable = !!selectedScript && scripts.includes(selectedScript);
   const uploadedModelStartBlocked =
@@ -1012,18 +987,6 @@ export default function ModelTrainingPage() {
   };
 
   useEffect(() => {
-    if (!isLoading && !user && dataSourceMode === 'personal') {
-      setDataSourceMode('default');
-    }
-  }, [dataSourceMode, isLoading, user]);
-
-  useEffect(() => {
-    if (switchPreviewMode && dataSourceMode !== switchPreviewMode) {
-      setSwitchPreviewMode(null);
-    }
-  }, [dataSourceMode, switchPreviewMode]);
-
-  useEffect(() => {
     if (!user) {
       setScripts([]);
       setScriptsLoading(false);
@@ -1145,67 +1108,6 @@ export default function ModelTrainingPage() {
     setCustomModelParams(createDefaultCustomModelParams(selectedUploadedParamSchema));
     setCustomModelParamErrors({});
   }, [selectedUploadedModelId, selectedUploadedParamSchema]);
-
-  useEffect(() => {
-    let active = true;
-    setIsSwitchingSource(true);
-
-    fetchDataInfo({ dataSource: dataSourceMode })
-      .then((info) => {
-        if (!active) return;
-        setSourceMeta(info?.source_meta || null);
-      })
-      .catch(() => {
-        if (!active) return;
-        setSourceMeta(null);
-      })
-      .finally(() => {
-        if (!active) return;
-        setIsSwitchingSource(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [dataSourceMode, user?.id]);
-
-  const handleDataSourceModeChange = async (nextMode) => {
-    if (isSwitchingSource || nextMode === dataSourceMode) return;
-    if (nextMode !== 'personal') {
-      setSwitchPreviewMode(null);
-      setDataSourceMode(nextMode);
-      return;
-    }
-    if (!user) {
-      showToast(getPersonalSourceLoginRequiredMessage(isZh), 'error');
-      return;
-    }
-
-    try {
-      setIsSwitchingSource(true);
-      const { blocked } = await getPersonalSourceAvailability();
-      if (blocked) {
-        showToast(getPersonalSourceBlockedMessage(isZh), 'error');
-        setIsSwitchingSource(false);
-        return;
-      }
-      const info = await fetchDataInfo({ dataSource: 'personal' });
-      if (isPersonalSourceInsufficient(info?.source_meta)) {
-        setSwitchPreviewMode('personal');
-        window.setTimeout(() => {
-          setSwitchPreviewMode(null);
-        }, PERSONAL_BOUNCE_MS);
-        showToast(info?.source_meta?.message || getPersonalSourceCheckFailedMessage(isZh), 'error');
-        setIsSwitchingSource(false);
-        return;
-      }
-      setSwitchPreviewMode(null);
-      setDataSourceMode('personal');
-    } catch {
-      showToast(getPersonalSourceCheckFailedMessage(isZh), 'error');
-      setIsSwitchingSource(false);
-    }
-  };
 
   const refreshUploadedModels = async (preferredId = selectedUploadedModelId) => {
     const payload = await fetchUserModels();
@@ -1382,7 +1284,7 @@ export default function ModelTrainingPage() {
         apiModelScript,
         hyperparameters,
         customModelName.trim(),
-        dataSourceMode,
+        getTrainingRequestDataSource(),
         {
           modelSource,
           uploadedModelId: modelSource === 'uploaded' ? selectedUploadedModelId : null,
@@ -1630,7 +1532,7 @@ export default function ModelTrainingPage() {
               >
                 <div>
                   <div style={panelTitleStyle}>{t('modelTraining.parameters')}</div>
-                  <div style={headerMetaTextStyle}>{isPersonalMode ? copy.sourceHintPersonal : copy.sourceHintDefault}</div>
+                  <div style={headerMetaTextStyle}>{copy.sourceHintDefault}</div>
                 </div>
                 <div
                   style={{
@@ -1654,57 +1556,22 @@ export default function ModelTrainingPage() {
                 <div style={{ ...sectionTitleStyle, marginBottom: 12 }}>{copy.dataSource}</div>
                 <div
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 8,
-                    padding: 5,
-                    borderRadius: 16,
-                    background: isLight ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.03)',
+                    minHeight: 40,
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0 12px',
+                    borderRadius: 14,
+                    background: isLight ? 'rgba(74,158,255,0.12)' : 'rgba(74,158,255,0.08)',
                     border: `1px solid ${C.border}`,
+                    color: C.blue,
+                    fontSize: 'calc(12px * var(--font-scale, 1))',
+                    fontWeight: 800,
                     marginBottom: 10,
                   }}
                 >
-                  {[
-                    { value: 'default', label: copy.sourceDefault },
-                    { value: 'personal', label: copy.sourcePersonal },
-                  ].map((option) => {
-                    const active = displayDataSourceMode === option.value;
-                    const optionDisabled = isSwitchingSource || (!user && option.value === 'personal');
-                    return (
-                      <button
-                        key={option.value}
-                        onClick={() => handleDataSourceModeChange(option.value)}
-                        disabled={optionDisabled}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: 12,
-                          border: 'none',
-                          background: active ? 'rgba(74,158,255,0.14)' : 'transparent',
-                          color: active ? C.blue : C.ice60,
-                          fontSize: 'calc(12px * var(--font-scale, 1))',
-                          fontWeight: active ? 700 : 600,
-                          cursor: optionDisabled ? 'not-allowed' : 'pointer',
-                          opacity: optionDisabled ? 0.5 : 1,
-                          transition: 'all 0.36s ease',
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
+                  {copy.sourceDefault}
                 </div>
-                {sourceMessage ? (
-                  <div style={{ ...fieldHintStyle, color: isPersonalMode ? C.blue : C.ice50 }}>{sourceMessage}</div>
-                ) : (
-                  <div style={{ ...fieldHintStyle, marginTop: 0 }}>
-                    {isPersonalMode ? copy.sourceHintPersonal : copy.sourceHintDefault}
-                  </div>
-                )}
-                {!user ? (
-                  <div style={{ ...fieldHintStyle, color: C.ice40 }}>
-                    {getPersonalSourceLoginRequiredMessage(isZh)}
-                  </div>
-                ) : null}
+                <div style={{ ...fieldHintStyle, marginTop: 0 }}>{copy.sourceHintDefault}</div>
                 <div style={{ ...sectionTitleStyle, marginTop: 16, marginBottom: 12 }}>{copy.trainingDataset}</div>
                 <div
                   style={{
@@ -2554,8 +2421,8 @@ export default function ModelTrainingPage() {
               />
               <SummaryMetric
                 label={copy.sourceMode}
-                value={isPersonalMode ? copy.sourcePersonal : copy.sourceDefault}
-                accent={isPersonalMode ? C.blue : C.ice}
+                value={copy.sourceDefault}
+                accent={C.ice}
               />
             </div>
 

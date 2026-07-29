@@ -41,6 +41,10 @@ def install_service_import_stubs():
     personal_service.PersonalDataSourceService = object
     sys.modules["services.personal_data_source_service"] = personal_service
 
+    training_weight_service = types.ModuleType("services.training_weight_service")
+    training_weight_service.TrainingWeightService = object
+    sys.modules["services.training_weight_service"] = training_weight_service
+
     if "fastapi" not in sys.modules:
         fastapi = types.ModuleType("fastapi")
 
@@ -68,8 +72,10 @@ def install_service_import_stubs():
 
         fastapi.APIRouter = APIRouter
         fastapi.Depends = lambda *args, **kwargs: None
+        fastapi.File = lambda *args, **kwargs: None
         fastapi.HTTPException = HTTPException
         fastapi.Request = object
+        fastapi.UploadFile = object
         fastapi.WebSocket = object
         fastapi.WebSocketDisconnect = Exception
         sys.modules["fastapi"] = fastapi
@@ -82,10 +88,12 @@ def install_service_import_stubs():
     schemas_training.LogResponse = object
     schemas_training.TrainingStartRequest = object
     schemas_training.TrainingTaskResponse = object
+    schemas_training.TrainingWeightFileListResponse = object
+    schemas_training.TrainingWeightFileResponse = object
     sys.modules["schemas.training"] = schemas_training
 
 
-def test_training_service_prepares_personal_inference_data_env():
+def test_training_service_ignores_historical_personal_inference_data_env():
     install_service_import_stubs()
 
     from services.training_service import TrainingService
@@ -102,7 +110,7 @@ def test_training_service_prepares_personal_inference_data_env():
             personal_source_service,
         ):
             self.prepare_calls.append((user_id, task_id, data_service, personal_source_service))
-            return {"ARESVISION_OPENMARS_DIR": "personal-openmars"}, Path("temp-personal"), "personal", None
+            raise AssertionError("historical personal tasks should not rebuild personal data")
 
     data_service = object()
     personal_source_service = object()
@@ -121,9 +129,9 @@ def test_training_service_prepares_personal_inference_data_env():
         )
     )
 
-    assert env == {"ARESVISION_OPENMARS_DIR": "personal-openmars"}
-    assert temp_root == Path("temp-personal")
-    assert service.prepare_calls == [(7, 42, data_service, personal_source_service)]
+    assert env == {}
+    assert temp_root is None
+    assert service.prepare_calls == []
 
 
 def test_training_service_uses_default_inference_env_for_default_tasks():
@@ -159,7 +167,7 @@ def test_training_service_uses_default_inference_env_for_default_tasks():
     assert service.prepare_calls == []
 
 
-def test_test_action_passes_personal_data_env_to_inference_and_cleans_up():
+def test_test_action_ignores_historical_personal_data_env():
     install_service_import_stubs()
 
     from routers import training as training_router
@@ -186,10 +194,7 @@ def test_test_action_passes_personal_data_env_to_inference_and_cleans_up():
             personal_source_service,
         ):
             self.prepare_calls.append((task, data_service, personal_source_service))
-            return {
-                "ARESVISION_OPENMARS_DIR": "personal-openmars",
-                "ARESVISION_MCD_DIR": "personal-mcd",
-            }, Path("temp-personal")
+            return {}, None
 
         def cleanup_temp_data_root(self, temp_root):
             self.cleanup_calls.append(temp_root)
@@ -228,16 +233,12 @@ def test_test_action_passes_personal_data_env_to_inference_and_cleans_up():
         training_router.training_service = original_training_service
         training_router.inference_service = original_inference_service
 
-    expected_env = {
-        "ARESVISION_OPENMARS_DIR": "personal-openmars",
-        "ARESVISION_MCD_DIR": "personal-mcd",
-    }
     assert result == {"status": "success", "data": {"ok": True}}
     assert fake_training_service.prepare_calls == [
         (fake_training_service.task, "data-service", "personal-service")
     ]
-    assert fake_inference_service.calls == [(42, expected_env)]
-    assert fake_training_service.cleanup_calls == [Path("temp-personal")]
+    assert fake_inference_service.calls == [(42, {})]
+    assert fake_training_service.cleanup_calls == [None]
 
 
 def test_inference_rebuild_passes_saved_architecture_params(monkeypatch, tmp_path):
@@ -401,8 +402,8 @@ def test_inference_test_action_passes_ls_even_without_sphere(monkeypatch, tmp_pa
 
 
 if __name__ == "__main__":
-    test_training_service_prepares_personal_inference_data_env()
+    test_training_service_ignores_historical_personal_inference_data_env()
     test_training_service_uses_default_inference_env_for_default_tasks()
-    test_test_action_passes_personal_data_env_to_inference_and_cleans_up()
+    test_test_action_ignores_historical_personal_data_env()
     test_inference_test_action_passes_ls_even_without_sphere()
     print("training personal inference environment tests passed")

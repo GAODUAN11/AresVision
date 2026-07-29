@@ -320,22 +320,7 @@ class InferenceService:
         data_service=None,
         personal_source_service=None,
     ):
-        requested_source = str(
-            hypers.get("_data_source") or hypers.get("_effective_data_source") or "default"
-        ).strip().lower()
-        if requested_source != "personal":
-            return {}, None
-        if data_service is None or personal_source_service is None:
-            return {}, None
-
-        from services.training_service import TrainingService
-
-        service = TrainingService()
-        return await service.prepare_task_inference_data_env(
-            task,
-            data_service=data_service,
-            personal_source_service=personal_source_service,
-        )
+        return {}, None
 
     @staticmethod
     def _cleanup_temp_data_root(temp_data_root: Path | None) -> None:

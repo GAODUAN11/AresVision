@@ -126,11 +126,15 @@ class UserDataService:
                 break
 
         # 数据类型检测
+        data_vars = set(ds.data_vars)
+        data_vars_lower = {name.lower() for name in data_vars}
+        has_count = bool({"count", "counts", "n_obs", "observation_count"} & data_vars_lower)
         is_openmars = "o3col" in ds
         mcd_vars_found = [v for v in MCD_VARIABLES if v in ds]
         data_type = (
-            "openmars" if is_openmars
-            else "mcd" if len(mcd_vars_found) >= 2
+            "nomad" if "o3col" in ds and has_count
+            else "mcd" if mcd_vars_found
+            else "openmars" if "o3col" in ds
             else "unknown"
         )
 
@@ -142,6 +146,7 @@ class UserDataService:
         }
 
         # 臭氧数据
+        sort_idx = None
         if is_openmars:
             o3 = ds["o3col"].values
             if o3.ndim == 4:
@@ -152,6 +157,14 @@ class UserDataService:
                 o3 = o3[sort_idx]
                 result["ls"] = ls
             result["o3col"] = o3
+
+        for count_name in ("count", "counts", "n_obs", "observation_count"):
+            if count_name in ds:
+                count = ds[count_name].values
+                if sort_idx is not None and count.ndim >= 1 and count.shape[0] == len(sort_idx):
+                    count = count[sort_idx]
+                result["count"] = count
+                break
 
         # MCD 变量
         for var in mcd_vars_found:
@@ -174,6 +187,10 @@ class UserDataService:
         return self._cache[cache_key]
 
     # ─── 公共接口 ──────────────────────────────────────────────────────────────
+
+    async def get_loaded_dataset(self, upload_id: int) -> dict:
+        """Return the cached parsed payload for a raw uploaded dataset."""
+        return await self._get_data(upload_id)
 
     async def get_dataset_summary(self, upload_id: int) -> dict:
         """获取数据集的基本信息摘要"""

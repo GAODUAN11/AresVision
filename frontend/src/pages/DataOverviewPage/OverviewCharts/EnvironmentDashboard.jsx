@@ -154,7 +154,7 @@ function EnvCard({ meta, dataset, copy, plotText, plotGrid }) {
   );
 }
 
-export default function EnvironmentDashboard({ marsYear, dataSourceMode = 'default' }) {
+export default function EnvironmentDashboard({ marsYear, overviewSourceParams = {} }) {
   const t = useT();
   const { settings } = useSettings();
 
@@ -222,8 +222,8 @@ export default function EnvironmentDashboard({ marsYear, dataSourceMode = 'defau
     let active = true;
     setLoading(true);
     Promise.all([
-      fetchOverviewSeasonalHeatmap(marsYear, { dataSource: dataSourceMode }),
-      ...VARIABLE_META_BASE.map((meta) => fetchOverviewEnvHeatmap(marsYear, meta.id, { dataSource: dataSourceMode })),
+      fetchOverviewSeasonalHeatmap(marsYear, overviewSourceParams),
+      ...VARIABLE_META_BASE.map((meta) => fetchOverviewEnvHeatmap(marsYear, meta.id, overviewSourceParams)),
     ])
       .then(([ozoneRes, ...envResults]) => {
         if (!active) return;
@@ -250,7 +250,7 @@ export default function EnvironmentDashboard({ marsYear, dataSourceMode = 'defau
     return () => {
       active = false;
     };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const bandInfluence = useMemo(() => {
     if (!ozoneHeatmap || !Object.keys(datasets).length) return null;

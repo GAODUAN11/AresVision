@@ -1,10 +1,14 @@
-import { fetchOverviewResearchSuite } from '../../../services/api';
+import { fetchOverviewResearchSuite } from '../../../services/api.js';
 
 const suiteCache = new Map();
 
 export async function loadResearchSuiteCached(marsYear, options = {}) {
-  const dataSource = options?.dataSource || 'default';
-  const key = `${dataSource}:${marsYear}`;
+  const key = [
+    marsYear,
+    options?.mcdUploadId || 'official-mcd',
+    options?.openmarsUploadId || 'official-openmars',
+    options?.nomadUploadId || 'official-nomad',
+  ].join(':');
   if (!suiteCache.has(key)) {
     suiteCache.set(key, fetchOverviewResearchSuite(marsYear, options));
   }

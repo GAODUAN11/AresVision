@@ -17,7 +17,7 @@ const LAT_BANDS = [
   'Polar South (60S-90S)',
 ];
 
-export default function RealtimeMonitor({ marsYear, lsValue, dataSourceMode = 'default' }) {
+export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParams = {} }) {
   const t = useT();
   const { settings } = useSettings();
 
@@ -82,7 +82,7 @@ export default function RealtimeMonitor({ marsYear, lsValue, dataSourceMode = 'd
     if (hasRenderableData) setRefreshing(true);
     else setLoading(true);
 
-    fetchOverviewDiurnal(marsYear, lsValue, latBand, { dataSource: dataSourceMode })
+    fetchOverviewDiurnal(marsYear, lsValue, latBand, overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -101,7 +101,7 @@ export default function RealtimeMonitor({ marsYear, lsValue, dataSourceMode = 'd
     return () => {
       active = false;
     };
-  }, [marsYear, lsValue, latBand, dataSourceMode]);
+  }, [marsYear, lsValue, latBand, overviewSourceParams]);
 
   const stats = useMemo(() => {
     if (!data?.ozone_values?.length) return null;

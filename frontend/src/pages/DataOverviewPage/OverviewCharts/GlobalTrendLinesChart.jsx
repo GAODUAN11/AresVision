@@ -15,7 +15,7 @@ const LABELS = {
 
 const DISPLAY_SERIES_KEYS = ['o3', 'temp', 'solar', 'wind'];
 
-export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'default' }) {
+export default function GlobalTrendLinesChart({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
@@ -46,7 +46,7 @@ export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'defa
     let active = true;
     setLoading(true);
 
-    loadResearchSuiteCached(marsYear, { dataSource: dataSourceMode })
+    loadResearchSuiteCached(marsYear, overviewSourceParams)
       .then((res) => {
         if (active) setData(res?.trend_lines || null);
       })
@@ -61,7 +61,7 @@ export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'defa
     return () => {
       active = false;
     };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const traces = useMemo(() => {
     const ls = data?.ls || [];

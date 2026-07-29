@@ -6,7 +6,7 @@ import { fetchOverviewCouplingData } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { correlation, roundValue, sampleSeries, summarizeSeries } from './aiInsight';
 
-export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' }) {
+export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
 
   const isLight = settings?.theme === 'light';
@@ -44,7 +44,7 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchOverviewCouplingData(marsYear, 'o3col', 'Temperature', { dataSource: dataSourceMode })
+    fetchOverviewCouplingData(marsYear, 'o3col', 'Temperature', overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -56,7 +56,7 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!data?.var1?.length || !data?.var2?.length) return null;

@@ -3,16 +3,9 @@ import C from '../../constants/colors';
 import { useDataOverview } from '../../contexts/DataOverviewContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useToast } from '../../contexts/ToastContext';
 import { GLOBE_VARIABLE_OPTIONS } from '../../constants/globeVariables';
-import { fetchOverviewInfo } from '../../services/api';
-import {
-  getPersonalSourceAvailability,
-  getPersonalSourceBlockedMessage,
-  getPersonalSourceCheckFailedMessage,
-  getPersonalSourceLoginRequiredMessage,
-  isPersonalSourceInsufficient,
-} from '../../utils/personalSourceGuard';
+import { getMyUploads } from '../../services/api';
+import { buildOverviewUploadOptions } from './uploadedSourceOptions';
 
 const NAVBAR_HEIGHT = 70;
 
@@ -39,8 +32,6 @@ export const MODE_DEFS = [
     desc: { zh: '适合分析极区活动、波动结构和区域异常。', en: 'Best for polar behavior, wave structures, and regional anomalies.' },
   },
 ];
-
-const PERSONAL_BOUNCE_MS = 720;
 
 function SectionLabel({ children }) {
   return (
@@ -316,7 +307,6 @@ function AdvancedToggleGroup({ title, open, onToggle, children, isLight = false,
 export default function SidebarMenu() {
   const { settings } = useSettings();
   const { user } = useAuth();
-  const { showToast } = useToast();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
   const {
@@ -325,11 +315,14 @@ export default function SidebarMenu() {
     marsYear,
     setMarsYear,
     availableMarsYears,
-    dataSourceMode,
-    setDataSourceMode,
     isSwitchingSource,
-    setIsSwitchingSource,
     sourceMeta,
+    selectedMcdUploadId,
+    setSelectedMcdUploadId,
+    selectedOpenMarsUploadId,
+    setSelectedOpenMarsUploadId,
+    selectedNomadUploadId,
+    setSelectedNomadUploadId,
     autoRotate,
     setAutoRotate,
     gestureEnabled,
@@ -351,38 +344,49 @@ export default function SidebarMenu() {
 
   const [displayOpen, setDisplayOpen] = React.useState(true);
   const [interactionOpen, setInteractionOpen] = React.useState(true);
-  const [switchPreviewMode, setSwitchPreviewMode] = React.useState(null);
+  const [rawUploadOptions, setRawUploadOptions] = React.useState({ mcd: [], openmars: [], nomad: [] });
+  const [rawUploadsLoading, setRawUploadsLoading] = React.useState(false);
 
   const panelBg = isLight ? 'rgba(255,255,255,0.82)' : 'rgba(10,12,18,0.54)';
   const borderSoft = isLight ? 'rgba(15,23,42,0.10)' : 'rgba(255,255,255,0.08)';
   const contentGap = leftPanelWidth <= 300 ? 14 : 16;
-  const displayDataSourceMode = switchPreviewMode || dataSourceMode;
-  const isPersonalMode = displayDataSourceMode === 'personal';
-  const personalSourceDisabled = !user;
-
-  React.useEffect(() => {
-    if (switchPreviewMode && dataSourceMode !== switchPreviewMode) {
-      setSwitchPreviewMode(null);
-    }
-  }, [dataSourceMode, switchPreviewMode]);
 
   const sourceMessage = React.useMemo(() => {
     const rawMessage = sourceMeta?.message;
     if (isZh) return rawMessage || '';
-    if (!rawMessage) {
-      if (sourceMeta?.effective_source === 'personal_mcd_plus_system_openmars') {
-        return 'Personal OpenMARS coverage is incomplete. Using system OpenMARS with personal MCD.';
-      }
-      return '';
-    }
-    if (/[a-zA-Z]/.test(rawMessage) && !/[\u4e00-\u9fff]/.test(rawMessage)) {
-      return rawMessage;
-    }
-    if (sourceMeta?.effective_source === 'personal_mcd_plus_system_openmars') {
-      return 'Personal OpenMARS coverage is incomplete. Using system OpenMARS with personal MCD.';
-    }
-    return '';
+    return /[a-zA-Z]/.test(rawMessage || '') && !/[\u4e00-\u9fff]/.test(rawMessage || '') ? rawMessage : '';
   }, [isZh, sourceMeta]);
+
+  React.useEffect(() => {
+    if (!user?.id) {
+      setRawUploadOptions({ mcd: [], openmars: [], nomad: [] });
+      setSelectedMcdUploadId(null);
+      setSelectedOpenMarsUploadId(null);
+      setSelectedNomadUploadId(null);
+      return undefined;
+    }
+
+    let active = true;
+    setRawUploadsLoading(true);
+    getMyUploads()
+      .then((uploads) => {
+        if (!active) return;
+        const nextOptions = buildOverviewUploadOptions(uploads);
+        setRawUploadOptions(nextOptions);
+        setSelectedMcdUploadId((current) => (nextOptions.mcd.some((item) => item.id === current) ? current : null));
+        setSelectedOpenMarsUploadId((current) => (nextOptions.openmars.some((item) => item.id === current) ? current : null));
+        setSelectedNomadUploadId((current) => (nextOptions.nomad.some((item) => item.id === current) ? current : null));
+      })
+      .catch(() => {
+        if (active) setRawUploadOptions({ mcd: [], openmars: [], nomad: [] });
+      })
+      .finally(() => {
+        if (active) setRawUploadsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [setSelectedMcdUploadId, setSelectedNomadUploadId, setSelectedOpenMarsUploadId, user?.id]);
 
   const globeVariableOptions = React.useMemo(
     () => GLOBE_VARIABLE_OPTIONS.map((option) => ({ value: option.id, label: isZh ? option.zh : option.en })),
@@ -412,52 +416,6 @@ export default function SidebarMenu() {
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   }, [leftPanelWidth, setLeftPanelWidth]);
-
-  const handleDataSourceModeChange = React.useCallback(async (nextMode) => {
-    if (isSwitchingSource || nextMode === dataSourceMode) return;
-    if (nextMode !== 'personal') {
-      setSwitchPreviewMode(null);
-      setDataSourceMode(nextMode);
-      return;
-    }
-    if (!user) {
-      showToast(getPersonalSourceLoginRequiredMessage(isZh), 'error');
-      return;
-    }
-
-    try {
-      setIsSwitchingSource(true);
-      const { blocked } = await getPersonalSourceAvailability();
-      if (blocked) {
-        showToast(getPersonalSourceBlockedMessage(isZh), 'error');
-        setIsSwitchingSource(false);
-        return;
-      }
-      const info = await fetchOverviewInfo({ dataSource: 'personal' });
-      if (isPersonalSourceInsufficient(info?.source_meta)) {
-        setSwitchPreviewMode('personal');
-        window.setTimeout(() => {
-          setSwitchPreviewMode(null);
-        }, PERSONAL_BOUNCE_MS);
-        showToast(info?.source_meta?.message || getPersonalSourceCheckFailedMessage(isZh), 'error');
-        setIsSwitchingSource(false);
-        return;
-      }
-      setSwitchPreviewMode(null);
-      setDataSourceMode('personal');
-    } catch {
-      showToast(getPersonalSourceCheckFailedMessage(isZh), 'error');
-      setIsSwitchingSource(false);
-    }
-  }, [
-    dataSourceMode,
-    isSwitchingSource,
-    isZh,
-    user,
-    setDataSourceMode,
-    setIsSwitchingSource,
-    showToast,
-  ]);
 
   return (
     <div
@@ -519,47 +477,36 @@ export default function SidebarMenu() {
         <section>
           <SectionLabel>{isZh ? '数据范围' : 'Data scope'}</SectionLabel>
           <div style={{ display: 'grid', gap: 12 }}>
-            <div>
-              <div style={{ color: C.ice60, fontSize: 'calc(11px * var(--font-scale, 1))', fontWeight: 600, marginBottom: 8 }}>
-                {isZh ? '数据源' : 'Data source'}
+            <SelectField
+              label={isZh ? '页面 MCD 数据源' : 'Page MCD source'}
+              value={selectedMcdUploadId ? String(selectedMcdUploadId) : 'official'}
+              onChange={(value) => setSelectedMcdUploadId(value === 'official' ? null : Number(value))}
+              options={[
+                { value: 'official', label: isZh ? '官方默认 MCD' : 'Official MCD' },
+                ...rawUploadOptions.mcd.map((item) => ({
+                  value: String(item.id),
+                  label: `${item.filename} / MY ${item.marsYear ?? '--'}`,
+                })),
+              ]}
+              disabled={rawUploadsLoading || isSwitchingSource}
+              isLight={isLight}
+            />
+
+            {!user ? (
+              <div style={{ color: C.ice40, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
+                {isZh ? '登录后可选择自己上传的 MCD / OpenMARS / NOMAD 原始数据。' : 'Sign in to select your uploaded MCD / OpenMARS / NOMAD raw datasets.'}
               </div>
-              <SegmentedToggle
-                value={displayDataSourceMode}
-                onChange={handleDataSourceModeChange}
-                disabled={isSwitchingSource}
-                isLight={isLight}
-                options={[
-                  {
-                    value: 'default',
-                    label: isZh ? '默认' : 'Default',
-                    activeBg: 'rgba(74,158,255,0.14)',
-                    activeColor: C.blue,
-                  },
-                  {
-                    value: 'personal',
-                    label: isZh ? '个人' : 'Personal',
-                    activeBg: 'rgba(74,158,255,0.14)',
-                    activeColor: C.blue,
-                    disabled: personalSourceDisabled,
-                  },
-                ]}
-              />
-              {personalSourceDisabled ? (
-                <div style={{ marginTop: 8, color: C.ice40, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
-                  {getPersonalSourceLoginRequiredMessage(isZh)}
-                </div>
-              ) : null}
-              {isSwitchingSource ? (
-                <div style={{ marginTop: 8, color: C.ice50, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
-                  {isZh ? '正在切换数据源，请稍候…' : 'Switching data source, please wait...'}
-                </div>
-              ) : null}
-              {!isSwitchingSource && sourceMessage ? (
-                <div style={{ marginTop: 8, color: isPersonalMode ? C.blue : C.ice50, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.55 }}>
-                  {sourceMessage}
-                </div>
-              ) : null}
-            </div>
+            ) : null}
+            {rawUploadsLoading || isSwitchingSource ? (
+              <div style={{ color: C.ice50, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
+                {isZh ? '正在刷新数据源，请稍候...' : 'Refreshing data sources, please wait...'}
+              </div>
+            ) : null}
+            {!rawUploadsLoading && sourceMessage ? (
+              <div style={{ color: C.ice50, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.55 }}>
+                {sourceMessage}
+              </div>
+            ) : null}
 
             <SelectField
               label={isZh ? '火星年' : 'Mars year'}
@@ -621,6 +568,36 @@ export default function SidebarMenu() {
                   {isZh
                     ? '右侧分析始终使用 MCD；验证模式用 NOMAD 稀疏观测点对比对应位置的 MCD。'
                     : 'Right-side analysis stays on MCD; validation compares sparse NOMAD observations against matched MCD cells.'}
+                </div>
+                <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+                  <SelectField
+                    label={isZh ? 'OpenMARS 臭氧图层' : 'OpenMARS ozone layer'}
+                    value={selectedOpenMarsUploadId ? String(selectedOpenMarsUploadId) : 'official'}
+                    onChange={(value) => setSelectedOpenMarsUploadId(value === 'official' ? null : Number(value))}
+                    options={[
+                      { value: 'official', label: isZh ? '官方 OpenMARS' : 'Official OpenMARS' },
+                      ...rawUploadOptions.openmars.map((item) => ({
+                        value: String(item.id),
+                        label: `${item.filename} / MY ${item.marsYear ?? '--'}`,
+                      })),
+                    ]}
+                    disabled={rawUploadsLoading || isSwitchingSource}
+                    isLight={isLight}
+                  />
+                  <SelectField
+                    label={isZh ? 'NOMAD 臭氧图层' : 'NOMAD ozone layer'}
+                    value={selectedNomadUploadId ? String(selectedNomadUploadId) : 'official'}
+                    onChange={(value) => setSelectedNomadUploadId(value === 'official' ? null : Number(value))}
+                    options={[
+                      { value: 'official', label: isZh ? '官方 NOMAD' : 'Official NOMAD' },
+                      ...rawUploadOptions.nomad.map((item) => ({
+                        value: String(item.id),
+                        label: `${item.filename} / MY ${item.marsYear ?? '--'}`,
+                      })),
+                    ]}
+                    disabled={rawUploadsLoading || isSwitchingSource}
+                    isLight={isLight}
+                  />
                 </div>
               </div>
             ) : null}

@@ -6,7 +6,7 @@ import { fetchOverviewZonalAnomaly } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
 
-export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
+export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
 
   const isLight = settings?.theme === 'light';
@@ -39,7 +39,7 @@ export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchOverviewZonalAnomaly(marsYear, 'o3col', { dataSource: dataSourceMode })
+    fetchOverviewZonalAnomaly(marsYear, 'o3col', overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -51,7 +51,7 @@ export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!data?.x?.length || !data?.y?.length || !data?.z?.length) return null;

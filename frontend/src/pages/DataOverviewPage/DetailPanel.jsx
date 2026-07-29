@@ -40,7 +40,7 @@ const CARD_TITLES = {
   correlation: { zh: '点位相关', en: 'Correlation' },
 };
 
-export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
+export default function DetailPanel({ sliceData, overviewSourceParams = {} }) {
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
@@ -147,16 +147,16 @@ export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
     };
   }, [expandedCard, activeAnalysisMode, selectedCoordinate]);
 
-  const realtimeComponent = useMemo(() => <RealtimeMonitor marsYear={marsYear} lsValue={globalTimeLs} dataSourceMode={dataSourceMode} />, [marsYear, globalTimeLs, dataSourceMode]);
-  const seasonalComponent = useMemo(() => <SeasonalChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const seasonalExtremesComponent = useMemo(() => <SeasonalExtremesChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const globalTrendComponent = useMemo(() => <GlobalTrendLinesChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const environmentComponent = useMemo(() => <EnvironmentDashboard marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const solarsensComponent = useMemo(() => <SolarSensitivity marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const waveComponent = useMemo(() => <WaveExplorer marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const waveDiagComponent = useMemo(() => <WaveBandDiagnosticsChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const polarComponent = useMemo(() => <PolarDynamics marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const couplingComponent = useMemo(() => <CouplingAnalysis marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
+  const realtimeComponent = useMemo(() => <RealtimeMonitor marsYear={marsYear} lsValue={globalTimeLs} overviewSourceParams={overviewSourceParams} />, [marsYear, globalTimeLs, overviewSourceParams]);
+  const seasonalComponent = useMemo(() => <SeasonalChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const seasonalExtremesComponent = useMemo(() => <SeasonalExtremesChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const globalTrendComponent = useMemo(() => <GlobalTrendLinesChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const environmentComponent = useMemo(() => <EnvironmentDashboard marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const solarsensComponent = useMemo(() => <SolarSensitivity marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const waveComponent = useMemo(() => <WaveExplorer marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const waveDiagComponent = useMemo(() => <WaveBandDiagnosticsChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const polarComponent = useMemo(() => <PolarDynamics marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const couplingComponent = useMemo(() => <CouplingAnalysis marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
   const distributionComponent = useMemo(
     () => (
       <DataDistribution
@@ -169,8 +169,8 @@ export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
     [marsYear, globalTimeLs, sliceData, selectedCoordinate],
   );
   const correlationComponent = useMemo(
-    () => <CorrelationMatrix marsYear={marsYear} coordinate={selectedCoordinate} dataSourceMode={dataSourceMode} />,
-    [marsYear, selectedCoordinate, dataSourceMode],
+    () => <CorrelationMatrix marsYear={marsYear} coordinate={selectedCoordinate} overviewSourceParams={overviewSourceParams} />,
+    [marsYear, selectedCoordinate, overviewSourceParams],
   );
 
   const cardsMap = {

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import C from '../constants/colors';
 import { useT } from '../i18n';
-import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { DataOverviewProvider, useDataOverview } from '../contexts/DataOverviewContext';
 import { fetchOverviewGlobeData, fetchOverviewInfo, fetchOverviewOzoneSources } from '../services/api';
@@ -19,14 +18,12 @@ import GlobeLegend from './DataOverviewPage/GlobeLegend';
 
 const DataOverviewPageContent = () => {
   const t = useT();
-  const { user, isLoading } = useAuth();
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const { 
     marsYear, 
     setMarsYear,
-    dataSourceMode,
-    setDataSourceMode,
+    overviewSourceParams,
     setAvailableMarsYears,
     setSourceMeta,
     setIsSwitchingSource,
@@ -65,12 +62,6 @@ const DataOverviewPageContent = () => {
   // Keep gesture capture window compact to reduce scene occlusion.
   const GESTURE_WINDOW_WIDTH = 190;
   const GESTURE_WINDOW_HEIGHT = 142;
-
-  useEffect(() => {
-    if (!isLoading && !user && dataSourceMode === 'personal') {
-      setDataSourceMode('default');
-    }
-  }, [dataSourceMode, isLoading, setDataSourceMode, user]);
 
   useEffect(() => {
     setOnGesture((gesture) => {
@@ -127,7 +118,7 @@ const DataOverviewPageContent = () => {
     mainAbortRef.current = ctrl;
     setLoadingGlobe(true);
     try {
-      const d = await fetchOverviewGlobeData(year, ls, variable, ctrl.signal, { dataSource: dataSourceMode });
+      const d = await fetchOverviewGlobeData(year, ls, variable, ctrl.signal, overviewSourceParams);
       if (!ctrl.signal.aborted) {
         setMcdMainSlice({
           points: d.points || [],
@@ -144,7 +135,7 @@ const DataOverviewPageContent = () => {
         setLoadingGlobe(false);
       }
     }
-  }, [dataSourceMode, setMcdMainSlice, setSourceMeta]);
+  }, [overviewSourceParams, setMcdMainSlice, setSourceMeta]);
 
   const loadOzoneOverlay = useCallback(async (ls, year) => {
     if (overlayAbortRef.current) overlayAbortRef.current.abort();
@@ -156,7 +147,7 @@ const DataOverviewPageContent = () => {
     const ctrl = new AbortController();
     overlayAbortRef.current = ctrl;
     try {
-      const payload = await fetchOverviewOzoneSources(year, ls, { dataSource: dataSourceMode });
+      const payload = await fetchOverviewOzoneSources(year, ls, overviewSourceParams);
       if (!ctrl.signal.aborted) {
         setOzoneOverlayPayload(payload);
       }
@@ -166,12 +157,12 @@ const DataOverviewPageContent = () => {
         setOzoneOverlayPayload(null);
       }
     }
-  }, [dataSourceMode, globeVariable, ozoneDisplayMode, setOzoneOverlayPayload]);
+  }, [overviewSourceParams, globeVariable, ozoneDisplayMode, setOzoneOverlayPayload]);
 
   useEffect(() => {
     let active = true;
     setIsSwitchingSource(true);
-    fetchOverviewInfo({ dataSource: dataSourceMode })
+    fetchOverviewInfo(overviewSourceParams)
       .then((info) => {
         if (!active) return;
         const years = Array.isArray(info?.available_years) && info.available_years.length > 0
@@ -195,15 +186,15 @@ const DataOverviewPageContent = () => {
     return () => {
       active = false;
     };
-  }, [dataSourceMode, setAvailableMarsYears, setMarsYear, setOverviewOzoneCapabilities, setOverviewTimeline, setSourceMeta, setIsSwitchingSource, user?.id]);
+  }, [overviewSourceParams, setAvailableMarsYears, setMarsYear, setOverviewOzoneCapabilities, setOverviewTimeline, setSourceMeta, setIsSwitchingSource]);
 
   useEffect(() => {
     loadMainSlice(globalTimeLs, marsYear, globeVariable);
-  }, [globalTimeLs, marsYear, globeVariable, dataSourceMode, loadMainSlice]);
+  }, [globalTimeLs, marsYear, globeVariable, loadMainSlice]);
 
   useEffect(() => {
     loadOzoneOverlay(globalTimeLs, marsYear);
-  }, [globalTimeLs, marsYear, dataSourceMode, globeVariable, ozoneDisplayMode, loadOzoneOverlay]);
+  }, [globalTimeLs, marsYear, globeVariable, ozoneDisplayMode, loadOzoneOverlay]);
 
   const sceneModel = useMemo(
     () => buildOverviewSceneModel({
@@ -327,7 +318,7 @@ const DataOverviewPageContent = () => {
         </div>
 
         <div style={{ pointerEvents: 'auto' }}>
-          <DetailPanel sliceData={mcdMainSlice} dataSourceMode={dataSourceMode} />
+          <DetailPanel sliceData={mcdMainSlice} overviewSourceParams={overviewSourceParams} />
         </div>
 
         <div style={{ pointerEvents: 'auto' }}>

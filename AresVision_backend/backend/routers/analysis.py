@@ -653,17 +653,14 @@ async def get_data_info(
 
 
 @router.get("/personal-build-status")
-async def get_personal_build_status(
-    request: Request,
-    current_user: User | None = Depends(get_optional_user),
-):
-    try:
-        resolver = request.app.state.personal_data_source_service
-        return await resolver.get_build_status(current_user.id if current_user else None)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"获取个人数据源预热状态失败: {exc}")
+async def get_personal_build_status():
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "personal-build-status has been retired; user uploads now feed Data Overview "
+            "raw-source visualization, while training and prediction use server-managed datasets"
+        ),
+    )
 
 
 @router.get("/coupling")

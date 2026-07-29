@@ -207,6 +207,15 @@ def test_overview_info_rejects_legacy_personal_source():
     assert "mcd_upload_id" in response.json()["detail"]
 
 
+def test_personal_build_status_endpoint_is_retired():
+    client = build_client()
+
+    response = client.get("/api/explore/personal-build-status")
+
+    assert response.status_code == 410
+    assert "retired" in response.json()["detail"]
+
+
 def test_overview_ozone_sources_never_errors_when_nomad_is_missing():
     client = build_client()
 

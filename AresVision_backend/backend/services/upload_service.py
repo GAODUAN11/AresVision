@@ -43,6 +43,8 @@ _LON_ALIASES = {"lon", "longitude"}
 
 # Ls 是数据变量而非维度（两种格式均如此，经调查确认）
 _LS_VAR_ALIASES = {"ls", "l_s", "solar_longitude"}
+_NOMAD_COUNT_ALIASES = {"count", "counts", "n_obs", "observation_count"}
+_MCD_OVERVIEW_REQUIRED_HINTS = {"Temperature", "U_Wind", "V_Wind", "Solar_Flux_DN"}
 
 
 # ─── 数据类 ───────────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ _LS_VAR_ALIASES = {"ls", "l_s", "solar_longitude"}
 @dataclass
 class ValidationResult:
     is_valid:   bool            = False
-    data_type:  Optional[str]   = None   # 'openmars' | 'mcd' | None
+    data_type:  Optional[str]   = None   # 'openmars' | 'mcd' | 'nomad' | None
     mars_year:  Optional[int]   = None
     ls_start:   Optional[float] = None
     ls_end:     Optional[float] = None
@@ -301,10 +303,20 @@ class UploadService:
 
     def _detect_data_type(self, ds: xr.Dataset) -> Optional[str]:
         """返回 'openmars'、'mcd' 或 None。"""
-        if "o3col" in ds.data_vars:
-            return "openmars"
-        if _MCD_DETECT_VARS & set(ds.data_vars):
+        data_vars = set(ds.data_vars)
+        data_vars_lower = {name.lower() for name in data_vars}
+
+        has_ozone = "o3col" in data_vars
+        has_nomad_count = bool(_NOMAD_COUNT_ALIASES & data_vars_lower)
+        if has_ozone and has_nomad_count:
+            return "nomad"
+
+        has_mcd_vars = bool(_MCD_DETECT_VARS & data_vars)
+        has_mcd_overview_shape = bool(_MCD_OVERVIEW_REQUIRED_HINTS & data_vars)
+        if has_mcd_vars or has_mcd_overview_shape:
             return "mcd"
+        if has_ozone:
+            return "openmars"
         return None
 
     def _extract_mars_year(self, ds: xr.Dataset, filename: str = "") -> Optional[int]:

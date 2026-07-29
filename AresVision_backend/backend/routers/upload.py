@@ -10,7 +10,6 @@
   POST   /{upload_id}/contribute  贡献文件给网站（送审）
 """
 
-import asyncio
 import logging
 import shutil
 from datetime import datetime, timezone
@@ -37,34 +36,8 @@ def _svc(request: Request):
 
 
 def _enqueue_personal_cache_rebuild(request: Request | None, user_id: int | None) -> None:
-    if request is None or user_id is None:
-        return
-    try:
-        uid = int(user_id)
-    except (TypeError, ValueError):
-        return
-    if uid <= 0:
-        return
-
-    enqueue = getattr(request.app.state, "enqueue_personal_cache_rebuild", None)
-    svc = getattr(request.app.state, "personal_data_source_service", None)
-    if svc is not None and hasattr(svc, "mark_build_queued"):
-        try:
-            asyncio.create_task(svc.mark_build_queued(uid))
-        except Exception as exc:
-            logger.warning("mark personal cache queued failed: %s", exc)
-    if callable(enqueue):
-        try:
-            enqueue(uid)
-            return
-        except Exception as exc:
-            logger.warning("enqueue personal cache rebuild failed: %s", exc)
-
-    if svc is not None and hasattr(svc, "build_user_cache"):
-        try:
-            asyncio.create_task(svc.build_user_cache(uid))
-        except Exception as exc:
-            logger.warning("fallback rebuild task create failed: %s", exc)
+    """Deprecated: raw user uploads no longer build fused personal data caches."""
+    return
 
 
 async def _add_lineage_event(

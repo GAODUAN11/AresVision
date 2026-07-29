@@ -107,3 +107,30 @@ def test_user_data_first_load_does_not_block_event_loop(tmp_path):
         await load_task
 
     asyncio.run(run())
+
+
+def test_raw_upload_cache_rebuild_hook_is_noop():
+    from types import SimpleNamespace
+    from routers import upload as upload_router
+
+    called = []
+
+    class FakePersonalService:
+        async def mark_build_queued(self, user_id):
+            called.append(("mark", user_id))
+
+        async def build_user_cache(self, user_id):
+            called.append(("build", user_id))
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                enqueue_personal_cache_rebuild=lambda user_id: called.append(("enqueue", user_id)),
+                personal_data_source_service=FakePersonalService(),
+            )
+        )
+    )
+
+    upload_router._enqueue_personal_cache_rebuild(request, 7)
+
+    assert called == []

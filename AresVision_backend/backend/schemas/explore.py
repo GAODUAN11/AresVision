@@ -16,6 +16,9 @@ class SourceMeta(BaseModel):
     build_progress: float | None = None
     build_stage_message: str | None = None
     signature_hash: str | None = None
+    upload_id: int | None = None
+    upload_filename: str | None = None
+    data_type: str | None = None
 
 
 class GlobePoint(BaseModel):

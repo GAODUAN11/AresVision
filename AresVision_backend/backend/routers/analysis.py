@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from auth.dependencies import get_optional_user
 from config import DEFAULT_MARS_YEAR, MCD_VARIABLES, OVERVIEW_MCD_VARIABLES
-from database.models import User
+from database.engine import async_session_maker
+from database.models import UploadRecord, User
 from schemas.explore import (
     CorrelationResponse,
     GlobeDataResponse,
@@ -20,6 +21,11 @@ from schemas.explore import (
 )
 from services.analysis_service import AnalysisService
 from services.personal_data_source_service import SingleYearDataView
+from services.user_overview_source_service import (
+    UserMcdOverviewDataView,
+    build_uploaded_nomad_validation,
+    build_uploaded_ozone_layer,
+)
 
 router = APIRouter(prefix="/explore", tags=["数据探索"])
 logger = logging.getLogger(__name__)
@@ -48,6 +54,55 @@ def _with_source_meta(payload: dict, source_meta: dict) -> dict:
     out = dict(payload)
     out["source_meta"] = source_meta
     return out
+
+
+_RAW_UPLOAD_ACTIVE_STATUSES = {"valid", "pending_review", "approved"}
+
+
+def _reject_legacy_personal(data_source: str) -> None:
+    requested = (data_source or "default").strip().lower()
+    if requested == "personal":
+        raise HTTPException(
+            status_code=400,
+            detail="data_source=personal has been retired; use mcd_upload_id for Data Overview uploaded MCD data",
+        )
+    if requested not in ("default", "official"):
+        raise HTTPException(status_code=400, detail="data_source must be 'default'")
+
+
+async def _get_accessible_upload_record(
+    upload_id: int,
+    current_user: User | None,
+    expected_types: set[str],
+) -> UploadRecord:
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="sign in before using uploaded datasets")
+    async with async_session_maker() as db:
+        record = await db.get(UploadRecord, upload_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="uploaded dataset not found")
+    if record.user_id != current_user.id and current_user.role != "admin" and record.status != "approved":
+        raise HTTPException(status_code=403, detail="no permission to access uploaded dataset")
+    if record.status not in _RAW_UPLOAD_ACTIVE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"uploaded dataset status '{record.status}' is not usable")
+    data_type = str(record.data_type or "").lower()
+    if data_type not in expected_types:
+        allowed = ", ".join(sorted(expected_types))
+        raise HTTPException(status_code=400, detail=f"uploaded dataset must be one of: {allowed}")
+    return record
+
+
+def _uploaded_source_meta(record: UploadRecord, effective_source: str) -> dict:
+    return {
+        "requested_source": "user_upload",
+        "effective_source": effective_source,
+        "fallback": False,
+        "message": None,
+        "mars_year": int(record.mars_year or DEFAULT_MARS_YEAR),
+        "upload_id": int(record.id),
+        "upload_filename": record.filename,
+        "data_type": record.data_type,
+    }
 
 
 def _normalize_source(data_source: str) -> str:
@@ -125,17 +180,10 @@ async def _resolve_analysis_context(
 
 
 def _overview_source_meta(data_source: str, mars_year: int) -> dict:
-    requested = _normalize_source(data_source)
-    if requested == "personal":
-        return {
-            "requested_source": "personal",
-            "effective_source": "default",
-            "fallback": True,
-            "message": "MCD-only overview currently uses the default runtime dataset.",
-            "mars_year": mars_year,
-        }
+    _reject_legacy_personal(data_source)
+    requested = (data_source or "default").strip().lower()
     return {
-        "requested_source": "default",
+        "requested_source": "official" if requested == "official" else "default",
         "effective_source": "default",
         "fallback": False,
         "message": None,
@@ -143,18 +191,56 @@ def _overview_source_meta(data_source: str, mars_year: int) -> dict:
     }
 
 
-def _resolve_overview_context(request: Request, my: int, data_source: str) -> tuple[AnalysisService, dict, int]:
-    service = request.app.state.mcd_overview_analysis_service
-    source_meta = _overview_source_meta(data_source, my)
-    return service, source_meta, my
+async def _resolve_overview_context(
+    request: Request,
+    my: int,
+    data_source: str,
+    current_user: User | None,
+    mcd_upload_id: int | None = None,
+) -> tuple[AnalysisService, dict, int]:
+    _reject_legacy_personal(data_source)
+    if not mcd_upload_id:
+        return request.app.state.mcd_overview_analysis_service, _overview_source_meta(data_source, my), my
+
+    record = await _get_accessible_upload_record(mcd_upload_id, current_user, {"mcd"})
+    data = await request.app.state.user_data_service.get_loaded_dataset(record.id)
+    resolved_year = int(record.mars_year or DEFAULT_MARS_YEAR)
+    view = UserMcdOverviewDataView(upload_id=record.id, mars_year=resolved_year, data=data)
+    service = AnalysisService(view, mcd_variables=OVERVIEW_MCD_VARIABLES)
+    return service, _uploaded_source_meta(record, "user_mcd"), resolved_year
 
 
 @router.get("/overview/info", response_model=OverviewInfoResponse)
 async def get_overview_info(
     request: Request,
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
+        _reject_legacy_personal(data_source)
+        if mcd_upload_id:
+            record = await _get_accessible_upload_record(mcd_upload_id, current_user, {"mcd"})
+            data = await request.app.state.user_data_service.get_loaded_dataset(record.id)
+            resolved_year = int(record.mars_year or DEFAULT_MARS_YEAR)
+            view = UserMcdOverviewDataView(upload_id=record.id, mars_year=resolved_year, data=data)
+            ls_min, ls_max = view.get_ls_range(resolved_year)
+            return {
+                "available_years": [resolved_year],
+                "timeline": {
+                    "min": float(ls_min),
+                    "max": float(ls_max),
+                    "step": 5.0,
+                },
+                "ozone_capabilities": {
+                    "openmars": True,
+                    "nomad": True,
+                    "diff_pairs": ["MCD-OpenMARS", "MCD-NOMAD"],
+                    "coverage": {},
+                },
+                "source_meta": _uploaded_source_meta(record, "user_mcd"),
+            }
+
         overview_service = request.app.state.mcd_overview_service
         years = overview_service.get_available_years()
         primary_year = DEFAULT_MARS_YEAR if DEFAULT_MARS_YEAR in years else years[0]
@@ -181,11 +267,15 @@ async def get_overview_globe_data(
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     ls: float = Query(10.0, ge=0, le=360, description="太阳黄经 Ls"),
     variable: str = Query("o3col", description="显示变量", enum=["o3col"] + OVERVIEW_MCD_VARIABLES),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
         variable = _validate_overview_variable(variable, include_ozone=True)
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_globe_data(resolved_year, ls, variable=variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
@@ -200,10 +290,14 @@ async def get_overview_globe_data(
 async def get_overview_seasonal_heatmap(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_seasonal_heatmap(resolved_year, variable="o3col")
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
@@ -215,11 +309,15 @@ async def get_overview_env_variable_heatmap(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     variable: str = Query(..., description="变量名", enum=OVERVIEW_MCD_VARIABLES),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
         variable = _validate_overview_variable(variable)
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_env_variable_heatmap(resolved_year, variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
@@ -230,10 +328,14 @@ async def get_overview_env_variable_heatmap(
 async def get_overview_correlation_matrix(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_correlation_matrix(resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
@@ -246,10 +348,14 @@ async def get_overview_diurnal(
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     ls: float = Query(90.0, description="太阳黄经 Ls"),
     lat_band: str = Query("Equatorial (30S-30N)", description="纬度带名称"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_diurnal_data(resolved_year, ls, lat_band)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
@@ -262,11 +368,15 @@ async def get_overview_coupling(
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     var1: str = Query("o3col", description="变量1"),
     var2: str = Query("Temperature", description="变量2", enum=OVERVIEW_MCD_VARIABLES),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
         var2 = _validate_overview_variable(var2)
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_coupling_data(resolved_year, var1, var2)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
@@ -278,11 +388,15 @@ async def get_overview_zonal_anomaly(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     variable: str = Query("o3col", description="变量名", enum=["o3col"] + OVERVIEW_MCD_VARIABLES),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
         variable = _validate_overview_variable(variable, include_ozone=True)
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_zonal_anomalies(resolved_year, variable)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
@@ -294,10 +408,14 @@ async def get_overview_solar_photochemical(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     lat_band: str = Query("Equatorial (30S-30N)", description="纬度带名称"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_solar_photochemical(resolved_year, lat_band)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
@@ -308,10 +426,14 @@ async def get_overview_solar_photochemical(
 async def get_overview_polar_dynamics(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_polar_dynamics(resolved_year)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
@@ -322,10 +444,14 @@ async def get_overview_polar_dynamics(
 async def get_overview_research_suite(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_research_suite(resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
@@ -339,11 +465,15 @@ async def get_overview_phase_space(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     driver: str = Query("Temperature", description="驱动变量", enum=OVERVIEW_MCD_VARIABLES),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
         driver = _validate_overview_variable(driver)
-        service, source_meta, resolved_year = _resolve_overview_context(request, my, data_source)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
         result = service.get_phase_space(resolved_year, driver)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
@@ -357,12 +487,55 @@ async def get_overview_ozone_sources(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR, description="火星年"),
     ls: float = Query(10.0, ge=0, le=360, description="太阳黄经 Ls"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    openmars_upload_id: int | None = Query(None, ge=1),
+    nomad_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
 ):
     try:
-        _normalize_source(data_source)
+        _reject_legacy_personal(data_source)
         overview_service = request.app.state.mcd_overview_service
-        return overview_service.get_ozone_overlay_payload(my, ls)
+        payload = overview_service.get_ozone_overlay_payload(my, ls)
+
+        if mcd_upload_id:
+            mcd_record = await _get_accessible_upload_record(mcd_upload_id, current_user, {"mcd"})
+            mcd_data = await request.app.state.user_data_service.get_loaded_dataset(mcd_record.id)
+            mcd_layer = build_uploaded_ozone_layer(mcd_data, ls, "mcd")
+            payload["mcd"] = mcd_layer
+            payload["anchor_ls"] = mcd_layer["ls"]
+            payload["mars_year"] = int(mcd_record.mars_year or my)
+        else:
+            mcd_layer = payload["mcd"]
+
+        if openmars_upload_id:
+            openmars_record = await _get_accessible_upload_record(openmars_upload_id, current_user, {"openmars"})
+            openmars_data = await request.app.state.user_data_service.get_loaded_dataset(openmars_record.id)
+            payload["openmars"] = build_uploaded_ozone_layer(openmars_data, payload["anchor_ls"], "openmars")
+
+        if nomad_upload_id:
+            nomad_record = await _get_accessible_upload_record(nomad_upload_id, current_user, {"nomad"})
+            nomad_data = await request.app.state.user_data_service.get_loaded_dataset(nomad_record.id)
+            payload["nomad"] = build_uploaded_ozone_layer(nomad_data, payload["anchor_ls"], "nomad")
+
+        payload["available_sources"] = [
+            source for source in ("mcd", "openmars", "nomad") if payload.get(source) is not None
+        ]
+        payload["diff_candidates"] = []
+        if payload.get("openmars") is not None:
+            payload["diff_candidates"].append("MCD-OpenMARS")
+        if payload.get("nomad") is not None:
+            payload["diff_candidates"].append("MCD-NOMAD")
+        payload["validation"] = {
+            "nomad": build_uploaded_nomad_validation(mcd_layer, payload.get("nomad"))
+        }
+        payload["capabilities"] = {
+            "openmars": payload.get("openmars") is not None,
+            "nomad": payload.get("nomad") is not None,
+            "diff_pairs": payload["diff_candidates"],
+            "coverage": payload.get("capabilities", {}).get("coverage", {}),
+        }
+        return payload
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except HTTPException:

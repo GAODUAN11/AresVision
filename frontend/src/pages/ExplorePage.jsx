@@ -16,12 +16,12 @@ function createCopy(isZh) {
     adminSplitTitle: isZh ? '为什么单独成页' : 'Why It Is Separate',
     adminAccessTitle: isZh ? '当前权限' : 'Current Access',
     lead: isZh
-      ? '数据管理页应该先回答“我要做什么”，而不是先把所有能力堆出来。这里按真实任务拆成多个视图：了解平台官方资产、接入个人数据源、把合格数据贡献给平台，以及管理员审核并入。'
-      : 'This page should answer "what am I here to do?" before showing every capability at once. The content is split by real user tasks: understand official assets, ingest a personal source, contribute qualified datasets, and review merges as an admin.',
+      ? '数据管理页用于上传 MCD / OpenMARS / NOMAD 原始数据，服务数据总览可视化；训练与预测使用管理员在服务器后台维护的数据。这里按真实任务拆成官方资产、我的原始数据、平台贡献和管理员审核。'
+      : 'Data Management uploads MCD / OpenMARS / NOMAD raw datasets for Data Overview visualization. Training and prediction use server-managed admin datasets. The page is split into official assets, my raw datasets, contribution, and admin review.',
     tabAsset: isZh ? '官方数据资产' : 'Official Assets',
     tabAssetDesc: isZh ? '查看平台已有系统数据和状态' : 'View platform-owned datasets and readiness',
-    tabMySource: isZh ? '我的数据源' : 'My Data Source',
-    tabMySourceDesc: isZh ? '上传并接入个人可用数据源' : 'Upload and ingest a personal source',
+    tabMySource: isZh ? '我的原始数据' : 'My Raw Datasets',
+    tabMySourceDesc: isZh ? '上传 MCD / OpenMARS / NOMAD，用于数据总览可视化' : 'Upload MCD / OpenMARS / NOMAD for Data Overview visualization',
     tabGovernance: isZh ? '数据治理' : 'Data Governance',
     tabGovernanceDesc: isZh ? '查看质量评分、血缘记录和生效资产状态' : 'Inspect quality scores, lineage, and active asset status',
     tabContribute: isZh ? '平台贡献' : 'Platform Contribution',
@@ -32,14 +32,14 @@ function createCopy(isZh) {
     assetIntroBody: isZh
       ? '这一页只负责说明平台当前官方数据底座是什么、覆盖到哪里、能支持什么，不与用户上传流程混在一起。'
       : 'This view is only about the current official data foundation: what it contains, how far it covers, and what it can support.',
-    mySourceIntroTitle: isZh ? '把上传数据接入成个人数据源' : 'Turn Uploads Into A Personal Source',
+    mySourceIntroTitle: isZh ? '数据总览原始数据工作台' : 'Data Overview Raw Dataset Workspace',
     mySourceIntroBody: isZh
-      ? '这一页只保留与“上传、校验、处理、接入、预览、供其他页面使用”直接相关的动作和状态。'
-      : 'This view keeps only the actions and status directly tied to upload, validation, processing, ingestion, preview, and downstream usage.',
+      ? '这里管理用户上传的原始数据。MCD 可作为数据总览整页数据源，OpenMARS 与 NOMAD 只用于三维臭氧多源展示。'
+      : 'This workspace manages raw uploads. MCD can drive the Data Overview page; OpenMARS and NOMAD are only 3D ozone sources.',
     contributeIntroTitle: isZh ? '把个人数据贡献给平台' : 'Contribute Personal Data To The Platform',
     contributeIntroBody: isZh
       ? '这一页聚焦公共贡献，不再混入个人接入细节。你只需要看到哪些数据能贡献、为什么能贡献，以及贡献后的审核记录。'
-      : 'This view focuses on public contribution only. It separates contribution eligibility and review history from the rest of personal ingestion.',
+      : 'This view focuses on public contribution only. It separates contribution eligibility and review history from raw dataset management.',
     contributeTipTitle: isZh ? '贡献前提' : 'Contribution Requirements',
     contributeTipBody: isZh
       ? '当前系统只有状态为 valid 的数据可以提交公共贡献。提交后状态会变为 pending_review，审核通过后进入 approved。'

@@ -9,6 +9,7 @@
   2. 审核通过数据：approved/{record_id}/original.nc
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Optional
@@ -169,7 +170,7 @@ class UserDataService:
             file_path = await self._get_file_path(upload_id)
             if not file_path:
                 raise ValueError(f"找不到上传记录 {upload_id} 的数据文件")
-            self._cache[cache_key] = self._load_nc_file(file_path)
+            self._cache[cache_key] = await asyncio.to_thread(self._load_nc_file, file_path)
         return self._cache[cache_key]
 
     # ─── 公共接口 ──────────────────────────────────────────────────────────────

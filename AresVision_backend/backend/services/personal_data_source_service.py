@@ -680,6 +680,19 @@ class PersonalDataSourceService:
 
         if build_status != "building":
             self._schedule_build(user_id)
+            resolution = self._default_resolution(
+                _PERSONAL,
+                mars_year,
+                message=None,
+                fallback=True,
+            )
+            resolution.build_status = "building"
+            resolution.build_stage = "queued"
+            resolution.build_progress = 4.0
+            resolution.build_stage_message = self._build_stage_message("queued")
+            resolution.signature_hash = signature_hash
+            self._cache_set(self._year_resolution_cache, cache_key, resolution)
+            return resolution
         if build_status == "building":
             resolution = self._default_resolution(
                 _PERSONAL,
@@ -770,15 +783,22 @@ class PersonalDataSourceService:
             return cached
 
         info = self._info_from_manifest(user_id, signature_hash)
+        queued_build = False
         if info is None:
             if build_status != "building":
                 self._schedule_build(user_id)
-                info = await asyncio.to_thread(self._build_info_from_records_sync, system_years, records)
+                info = self._build_warming_default_info(system_years)
+                queued_build = True
             else:
                 info = self._build_warming_default_info(system_years)
 
         info = dict(info)
         info["source_meta"] = self._build_source_meta_with_status(info.get("source_meta", {}), build_status)
+        if queued_build:
+            info["source_meta"]["build_status"] = "building"
+            info["source_meta"]["build_stage"] = "queued"
+            info["source_meta"]["build_progress"] = 4.0
+            info["source_meta"]["build_stage_message"] = self._build_stage_message("queued")
         if build_stage:
             info["source_meta"]["build_stage"] = build_stage
         if build_progress is not None:

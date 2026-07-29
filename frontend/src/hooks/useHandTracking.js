@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { canStartHandTracking, createVideoRefBinder } from './handTrackingLifecycle.js';
 
 export default function useHandTracking(enabled = false) {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState(null);
+  const [videoElement, setVideoElement] = useState(null);
   const handLandmarkerRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const requestRef = useRef(null);
-  const loadedDataHandlerRef = useRef(null);
+  const setVideoRef = useCallback(createVideoRefBinder({ videoRef, setVideoElement }), []);
 
   // 回调 refs，避免闭包陷阱
   const onGestureCb = useRef(null);
@@ -63,9 +65,6 @@ export default function useHandTracking(enabled = false) {
         streamRef.current = null;
       }
       if (videoRef.current) {
-        if (loadedDataHandlerRef.current) {
-          videoRef.current.removeEventListener('loadeddata', loadedDataHandlerRef.current);
-        }
         videoRef.current.srcObject = null;
       }
       if (handLandmarkerRef.current) {
@@ -77,13 +76,13 @@ export default function useHandTracking(enabled = false) {
 
   // 2. 视频流捕捉与处理
   useEffect(() => {
-    if (!enabled) return;
+    if (!canStartHandTracking({ enabled, videoElement })) return;
     
-    const video = videoRef.current;
-    if (!video) return;
+    const video = videoElement;
 
     let isVideoPlaying = false;
     let cancelled = false;
+    let loadedDataHandler = null;
 
     const startCamera = async () => {
       try {
@@ -106,7 +105,7 @@ export default function useHandTracking(enabled = false) {
         video.muted = true;
         video.playsInline = true;
 
-        const handleLoadedData = async () => {
+        loadedDataHandler = async () => {
           try {
             await video.play();
             if (cancelled) return;
@@ -118,11 +117,7 @@ export default function useHandTracking(enabled = false) {
           }
         };
 
-        if (loadedDataHandlerRef.current) {
-          video.removeEventListener('loadeddata', loadedDataHandlerRef.current);
-        }
-        loadedDataHandlerRef.current = handleLoadedData;
-        video.addEventListener('loadeddata', handleLoadedData, { once: true });
+        video.addEventListener('loadeddata', loadedDataHandler, { once: true });
       } catch (err) {
         console.error('Hand tracking startup error:', err);
         setError(`无法启动手势控制：${err.message}`);
@@ -233,21 +228,20 @@ export default function useHandTracking(enabled = false) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
-      if (videoRef.current) {
-        if (loadedDataHandlerRef.current) {
-          videoRef.current.removeEventListener('loadeddata', loadedDataHandlerRef.current);
-        }
-        videoRef.current.srcObject = null;
+      if (loadedDataHandler) {
+        video.removeEventListener('loadeddata', loadedDataHandler);
       }
+      video.srcObject = null;
 
       lastState.current = { x: null, y: null, dist: null, activeHands: 0 };
     };
-  }, [enabled, initHandLandmarker]);
+  }, [enabled, videoElement, initHandLandmarker]);
 
   return {
     isReady,
     error,
     videoRef, // 如果想要外部看到摄像头画面，可以使用这个 ref，但通常我们会额外绘制关键点，所以对外导出一个绘制组件更合适
+    setVideoRef,
     setOnGesture,
     setOnLandmarks
   };

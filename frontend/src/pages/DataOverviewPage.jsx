@@ -57,7 +57,7 @@ const DataOverviewPageContent = () => {
   const globeCanvasRef = useRef(null);
   const landmarksCanvasRef = useRef(null);
 
-  const { videoRef, error: gestureError, setOnGesture, setOnLandmarks } = useHandTracking(gestureEnabled);
+  const { setVideoRef, error: gestureError, setOnGesture, setOnLandmarks } = useHandTracking(gestureEnabled);
 
   // Keep gesture capture window compact to reduce scene occlusion.
   const GESTURE_WINDOW_WIDTH = 190;
@@ -264,7 +264,7 @@ const DataOverviewPageContent = () => {
             <>
               <div style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.5 }}>
                 <video
-                  ref={videoRef}
+                  ref={setVideoRef}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
                   playsInline
                   muted

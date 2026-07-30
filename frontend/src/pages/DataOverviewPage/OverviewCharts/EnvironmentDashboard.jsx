@@ -13,6 +13,7 @@ const VARIABLE_META_BASE = [
   { id: 'Temperature', color: C.mars, unit: 'K' },
   { id: 'Solar_Flux_DN', color: '#f7cf4a', unit: 'W/m^2' },
   { id: 'U_Wind', color: C.blue, unit: 'm/s' },
+  { id: 'V_Wind', color: '#7fb3ff', unit: 'm/s' },
 ];
 
 const LAT_BANDS_BASE = [
@@ -34,13 +35,13 @@ function summarizeSeriesWithPeak(values) {
 
 function convertValue(variableId, value) {
   if (variableId === 'Temperature') return convertTemp(value, 'K');
-  if (variableId === 'U_Wind') return convertWind(value, 'm/s');
+  if (variableId === 'U_Wind' || variableId === 'V_Wind') return convertWind(value, 'm/s');
   return value;
 }
 
 function unitLabel(variableId, fallback) {
   if (variableId === 'Temperature') return tempLabel('K');
-  if (variableId === 'U_Wind') return windLabel('m/s');
+  if (variableId === 'U_Wind' || variableId === 'V_Wind') return windLabel('m/s');
   return fallback;
 }
 
@@ -203,6 +204,7 @@ export default function EnvironmentDashboard({ marsYear, overviewSourceParams = 
       Temperature: 'Temperature',
       Solar_Flux_DN: 'Solar Flux',
       U_Wind: 'U Wind',
+      V_Wind: 'V Wind',
       polar_north: 'Polar North',
       mid_north: 'Mid-Lat North',
       equatorial: 'Equatorial',
@@ -211,7 +213,7 @@ export default function EnvironmentDashboard({ marsYear, overviewSourceParams = 
     },
   };
 
-  const variableMeta = useMemo(() => VARIABLE_META_BASE.map((meta) => ({ ...meta, label: copy.labels[meta.id] })), [copy.labels]);
+  const variableMeta = useMemo(() => VARIABLE_META_BASE.map((meta) => ({ ...meta, label: copy.labels[meta.id] || meta.id })), [copy.labels]);
   const latBands = useMemo(() => LAT_BANDS_BASE.map((band) => ({ ...band, label: copy.labels[band.id] })), [copy.labels]);
 
   const [datasets, setDatasets] = useState({});

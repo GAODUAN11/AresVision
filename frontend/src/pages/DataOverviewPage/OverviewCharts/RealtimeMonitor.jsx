@@ -70,6 +70,15 @@ export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParam
     'Mid-Lat South (30S-60S)': copy.midSouth,
     'Polar South (60S-90S)': copy.polarSouth,
   };
+  const unavailableCopy = isZh
+    ? {
+      title: '暂无小时臭氧数据',
+      body: '当前数据源没有 O3COL/o3col 小时字段，因此这里不再生成模拟臭氧曲线。',
+    }
+    : {
+      title: 'Hourly ozone unavailable',
+      body: 'This source has no O3COL/o3col hourly field, so the chart no longer generates simulated ozone.',
+    };
   const [latBand, setLatBand] = useState(LAT_BANDS[2]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -153,7 +162,45 @@ export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParam
   }
 
   if (!data?.ozone_values?.length) {
-    return <div style={{ color: C.mars, padding: 20 }}>{t('overview.charts.noData')}</div>;
+    const message = data?.message || unavailableCopy.body;
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'grid', alignContent: 'start', gap: 14, padding: 20 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {LAT_BANDS.map((item) => {
+            const active = item === latBand;
+            return (
+              <button
+                key={item}
+                onClick={() => setLatBand(item)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 999,
+                  border: `1px solid ${active ? C.mars : C.border}`,
+                  background: active ? 'rgba(199,91,57,0.12)' : 'rgba(255,255,255,0.03)',
+                  color: active ? C.mars : C.ice60,
+                  fontSize: 'calc(11px * var(--font-scale, 1))',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                }}
+              >
+                {shortLabels[item]}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 16, background: 'rgba(255,255,255,0.035)', padding: 18 }}>
+          <div style={{ color: C.mars, fontWeight: 800, fontFamily: 'var(--font-display)', fontSize: 'calc(15px * var(--font-scale, 1))' }}>
+            {unavailableCopy.title}
+          </div>
+          <div style={{ color: C.ice60, marginTop: 8, lineHeight: 1.65, fontSize: 'calc(12px * var(--font-scale, 1))' }}>
+            {message || t('overview.charts.noData')}
+          </div>
+          <div style={{ color: C.ice30, marginTop: 10, fontSize: 'calc(11px * var(--font-scale, 1))' }}>
+            {copy.marsYear}{marsYear} · {copy.solarLongitude} {fmtNum(lsValue, 0)}° · {shortLabels[latBand]}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

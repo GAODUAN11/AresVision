@@ -5,6 +5,9 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewPolarDynamics } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import { movingAverageSeries } from './chartSeries';
+
+const SMOOTH_WINDOW = 21;
 
 export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
@@ -95,6 +98,16 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
     };
   }, [data]);
 
+  const smoothedData = useMemo(() => {
+    if (!data?.ls?.length) return null;
+    return {
+      northOzone: movingAverageSeries(data?.north?.ozone || [], SMOOTH_WINDOW),
+      southOzone: movingAverageSeries(data?.south?.ozone || [], SMOOTH_WINDOW),
+      northTemp: movingAverageSeries(data?.north?.temp || [], SMOOTH_WINDOW),
+      southTemp: movingAverageSeries(data?.south?.temp || [], SMOOTH_WINDOW),
+    };
+  }, [data]);
+
   const aiInsightProvider = useCallback(() => ({
     card: 'polar',
     marsYear,
@@ -145,12 +158,30 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
               y: data.north.ozone,
               type: 'scatter',
               mode: 'lines',
+              name: `${copy.northOzone} raw`,
+              line: { color: 'rgba(74,158,255,0.22)', width: 1 },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.northOzone || data.north.ozone,
+              type: 'scatter',
+              mode: 'lines',
               name: copy.northOzone,
               line: { color: C.blue, width: 2.5 }
             },
             {
               x: data.ls,
               y: data.south.ozone,
+              type: 'scatter',
+              mode: 'lines',
+              name: `${copy.southOzone} raw`,
+              line: { color: 'rgba(199,91,57,0.22)', width: 1, dash: 'dot' },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.southOzone || data.south.ozone,
               type: 'scatter',
               mode: 'lines',
               name: copy.southOzone,
@@ -194,12 +225,30 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
               y: data.north.temp,
               type: 'scatter',
               mode: 'lines',
+              name: `${copy.northTemp} raw`,
+              line: { color: 'rgba(0,210,255,0.20)', width: 1 },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.northTemp || data.north.temp,
+              type: 'scatter',
+              mode: 'lines',
               name: copy.northTemp,
               line: { color: '#00d2ff', width: 1.5 }
             },
             {
               x: data.ls,
               y: data.south.temp,
+              type: 'scatter',
+              mode: 'lines',
+              name: `${copy.southTemp} raw`,
+              line: { color: 'rgba(255,123,0,0.20)', width: 1, dash: 'dot' },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.southTemp || data.south.temp,
               type: 'scatter',
               mode: 'lines',
               name: copy.southTemp,

@@ -19,6 +19,7 @@ import xarray as xr
 
 from config import (
     MCD_OVERVIEW_DIR,
+    MCD_RAW_3H_DIR,
     NOMAD_DIR,
     NOMAD_MATCH_TOLERANCE_LS,
     OVERVIEW_OZONE_MATCH_TOLERANCE_LS,
@@ -44,14 +45,17 @@ class McdOverviewDataService:
         base_data_service: DataService,
         overview_dir: Path = MCD_OVERVIEW_DIR,
         nomad_dir: Path = NOMAD_DIR,
+        raw_3h_dir: Path = MCD_RAW_3H_DIR,
         supported_years: list[int] | None = None,
     ):
         self.base = base_data_service
         self.overview_dir = Path(overview_dir)
         self.nomad_dir = Path(nomad_dir)
+        self.raw_3h_dir = Path(raw_3h_dir)
         self.supported_years = supported_years
         self.overview: dict[int, dict] = {}
         self.nomad: dict[int, dict] = {}
+        self.raw_hourly_mcd: dict[int, dict | None] = {}
         self._load_all()
 
     def _load_all(self) -> None:
@@ -154,9 +158,63 @@ class McdOverviewDataService:
             aligned[field_name] = year[field_name]
         return aligned
 
+    def _load_raw_3h_ozone(self, mars_year: int) -> dict | None:
+        if mars_year in self.raw_hourly_mcd:
+            return self.raw_hourly_mcd[mars_year]
+        if not self.raw_3h_dir.is_dir():
+            self.raw_hourly_mcd[mars_year] = None
+            return None
+
+        files = sorted(self.raw_3h_dir.glob(f"*MY{mars_year}*3h*.nc"))
+        if not files:
+            files = sorted(self.raw_3h_dir.glob(f"*MY{mars_year}*.nc"))
+        if not files:
+            self.raw_hourly_mcd[mars_year] = None
+            return None
+
+        file_path = files[0]
+        try:
+            with xr.open_dataset(file_path, decode_times=False) as ds:
+                ozone_name = next((name for name in ("O3COL", "o3col") if name in ds), None)
+                ls_name = next((name for name in ("LS", "Ls", "ls") if name in ds), None)
+                if ozone_name is None or ls_name is None or "lat" not in ds or "lon" not in ds:
+                    logger.warning("Raw 3h MCD file missing ozone/LS/lat/lon fields: %s", file_path)
+                    self.raw_hourly_mcd[mars_year] = None
+                    return None
+
+                ozone = np.asarray(ds[ozone_name].values, dtype=np.float32)
+                ls_values = np.asarray(ds[ls_name].values, dtype=np.float32)
+                if ozone.ndim != 3 or ls_values.ndim != 1:
+                    logger.warning("Raw 3h MCD file has unsupported dimensions: %s", file_path)
+                    self.raw_hourly_mcd[mars_year] = None
+                    return None
+
+                steps_per_sol = 8
+                sol_count = min(ozone.shape[0], ls_values.shape[0]) // steps_per_sol
+                if sol_count < 1:
+                    self.raw_hourly_mcd[mars_year] = None
+                    return None
+
+                trim = sol_count * steps_per_sol
+                hourly = ozone[:trim].reshape(sol_count, steps_per_sol, ozone.shape[1], ozone.shape[2])
+                ls_sol = np.nanmean(ls_values[:trim].reshape(sol_count, steps_per_sol), axis=1).astype(np.float32)
+                loaded = {
+                    "O3COL_hourly": hourly,
+                    "ls": ls_sol,
+                    "lat": np.asarray(ds["lat"].values, dtype=np.float32),
+                    "lon": np.asarray(ds["lon"].values, dtype=np.float32),
+                    "raw_3h_source_file": str(file_path),
+                }
+                self.raw_hourly_mcd[mars_year] = loaded
+                return loaded
+        except Exception as exc:
+            logger.warning("Failed to load raw 3h MCD ozone for MY%s from %s: %s", mars_year, file_path, exc)
+            self.raw_hourly_mcd[mars_year] = None
+            return None
+
     def get_mcd_data(self, mars_year: int) -> dict:
         try:
-            return self.base.get_mcd_data(mars_year)
+            out = dict(self.base.get_mcd_data(mars_year))
         except ValueError:
             year = self._require_year(mars_year)
             out = {
@@ -167,7 +225,11 @@ class McdOverviewDataService:
             for field_name in OVERVIEW_ENV_FIELDS:
                 if field_name in year:
                     out[field_name] = year[field_name]
-            return out
+
+        raw_hourly = self._load_raw_3h_ozone(mars_year)
+        if raw_hourly is not None:
+            out.update(raw_hourly)
+        return out
 
     def get_available_years(self) -> list[int]:
         return sorted(self.overview.keys())

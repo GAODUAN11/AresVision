@@ -93,6 +93,23 @@ def write_nomad_nc(path: Path, year: int):
     ds.close()
 
 
+def write_raw_3h_mcd_nc(path: Path):
+    time = np.arange(16, dtype=np.int32)
+    lat = np.array([-2.5, 2.5], dtype=np.float32)
+    lon = np.array([0.0, 5.0], dtype=np.float32)
+    o3 = np.arange(16 * 2 * 2, dtype=np.float32).reshape(16, 2, 2)
+    ds = xr.Dataset(
+        data_vars={
+            "O3COL": (("time", "lat", "lon"), o3),
+            "LS": (("time",), np.linspace(10.0, 11.5, 16, dtype=np.float32)),
+            "LST": (("time", "lon"), np.tile(np.array([0.0, 3.0], dtype=np.float32), (16, 1))),
+        },
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    ds.to_netcdf(path)
+    ds.close()
+
+
 def test_overview_service_discovers_years_from_overview_files(tmp_path):
     overview_dir = tmp_path / "mcd_overview"
     nomad_dir = tmp_path / "nomad"
@@ -138,3 +155,25 @@ def test_overlay_payload_does_not_include_nomad_when_no_sparse_points_match(tmp_
     assert "nomad" not in payload["available_sources"]
     assert "MCD-NOMAD" not in payload["diff_candidates"]
     assert payload["nomad"] is None
+
+
+def test_overview_service_loads_raw_3h_ozone_for_diurnal_chart(tmp_path):
+    overview_dir = tmp_path / "mcd_overview"
+    nomad_dir = tmp_path / "nomad"
+    raw_3h_dir = tmp_path / "raw_3h"
+    overview_dir.mkdir()
+    raw_3h_dir.mkdir()
+    write_overview_nc(overview_dir / "MCD_MY34_overview.nc", 34, ls_values=[10.0])
+    write_raw_3h_mcd_nc(raw_3h_dir / "MCD_MY34_global_3h_5deg_10m_ls_lst.nc")
+
+    service = McdOverviewDataService(
+        FakeBaseDataService(),
+        overview_dir=overview_dir,
+        nomad_dir=nomad_dir,
+        raw_3h_dir=raw_3h_dir,
+    )
+    data = service.get_mcd_data(34)
+
+    assert data["O3COL_hourly"].shape == (2, 8, 2, 2)
+    assert data["ls"].shape == (2,)
+    np.testing.assert_allclose(data["O3COL_hourly"][0, :, 0, 0], np.arange(0, 32, 4, dtype=np.float32))

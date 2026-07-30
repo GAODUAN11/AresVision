@@ -174,17 +174,29 @@ class AnalysisService:
 
         band_def = next((b for b in LATITUDE_BANDS if b["name"] == lat_band_name), LATITUDE_BANDS[2])
 
-        lat_arr = om["lat"]
+        lat_arr = np.asarray(mc.get("lat", om["lat"]))
         lat_mask = (lat_arr >= band_def["lat_min"]) & (lat_arr <= band_def["lat_max"])
 
-        hourly_key = "Temperature_hourly"
-        if hourly_key in mc and "ls" in mc:
+        hourly_key = next(
+            (key for key in ("o3col_hourly", "O3COL_hourly", "Ozone_hourly") if key in mc),
+            None,
+        )
+        hourly_data = np.asarray(mc[hourly_key]) if hourly_key else None
+        if hourly_data is None:
+            for key in ("o3col", "O3COL"):
+                if key in mc and np.asarray(mc[key]).ndim == 4:
+                    hourly_key = key
+                    hourly_data = np.asarray(mc[key])
+                    break
+
+        if hourly_data is not None and "ls" in mc:
             mcd_ls = mc["ls"]
             sol_idx = self.data_service.get_nearest_ls_index(mcd_ls, ls)
-            hourly_data = mc[hourly_key]
 
             if sol_idx < hourly_data.shape[0]:
                 data_at_sol = hourly_data[sol_idx]
+                if data_at_sol.ndim != 3 or data_at_sol.shape[1] != lat_mask.shape[0]:
+                    return self._unavailable_diurnal(ls, band_def, "Hourly ozone grid does not match latitude axis.")
                 band_mean = np.nanmean(data_at_sol[:, lat_mask, :], axis=(1, 2))
                 n_hours = data_at_sol.shape[0]
                 hours = np.linspace(0, 24, n_hours, endpoint=False)
@@ -193,9 +205,17 @@ class AnalysisService:
                     "ozone_values": [float(v) for v in band_mean],
                     "lat_band": band_def["name"],
                     "ls": float(ls),
+                    "available": True,
+                    "variable": "o3col",
+                    "source_key": hourly_key,
+                    "message": None,
                 }
 
-        return self._generate_simulated_diurnal(ls, band_def)
+        return self._unavailable_diurnal(
+            ls,
+            band_def,
+            "Hourly ozone is not available for this source. Use an MCD source with O3COL/o3col hourly data.",
+        )
 
     @staticmethod
     def _to_nested_list(arr: np.ndarray) -> list[list[float | None]]:
@@ -208,6 +228,19 @@ class AnalysisService:
         if finite.size == 0:
             return 0.0, 0.0
         return float(np.min(finite)), float(np.max(finite))
+
+    @staticmethod
+    def _unavailable_diurnal(ls: float, band_def: dict, message: str) -> dict:
+        return {
+            "hours": [],
+            "ozone_values": [],
+            "lat_band": band_def["name"],
+            "ls": float(ls),
+            "available": False,
+            "variable": "o3col",
+            "source_key": None,
+            "message": message,
+        }
 
     @staticmethod
     def _generate_simulated_diurnal(ls: float, band_def: dict) -> dict:
@@ -305,6 +338,8 @@ class AnalysisService:
             "max": float(np.nanmax(anomaly_ordered)),
             "variable": variable,
         }
+        # Plotly heatmap expects z rows to follow y (latitude), columns to follow x (longitude).
+        result["z"] = self._to_nested_list(anomaly_ordered)
         self._cache[cache_key] = result
         return result
 

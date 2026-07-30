@@ -285,7 +285,7 @@ def classify_overview_upload_dataset(ds: xr.Dataset, filename: str = "") -> str 
     return None
 
 
-def _normalize_ozone_source(ds: xr.Dataset, data_type: str, filename: str = "") -> dict:
+def _normalize_ozone_source(ds: xr.Dataset, data_type: str, filename: str = "", sort: bool = True) -> dict:
     lat_name = _find_name(ds, _LAT_ALIASES)
     lon_name = _find_name(ds, _LON_ALIASES)
     ls_name = _find_name(ds, _LS_ALIASES)
@@ -332,11 +332,11 @@ def _normalize_ozone_source(ds: xr.Dataset, data_type: str, filename: str = "") 
         "mars_year": _extract_mars_year(ds, filename),
     }
     out.update(grid_fields)
-    return _sort_time(out)
+    return _sort_time(out) if sort else out
 
 
 def _normalize_ready_mcd(ds: xr.Dataset, filename: str = "") -> dict:
-    out = _normalize_ozone_source(ds, "mcd", filename)
+    out = _normalize_ozone_source(ds, "mcd", filename, sort=False)
     lat_name = _find_name(ds, _LAT_ALIASES)
     lon_name = _find_name(ds, _LON_ALIASES)
     source_lat = _values_1d(ds, lat_name) if lat_name else out["lat"]

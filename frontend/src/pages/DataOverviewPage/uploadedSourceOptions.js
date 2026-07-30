@@ -16,6 +16,11 @@ function normalizeUpload(upload) {
   };
 }
 
+function marsYearSortValue(upload) {
+  const year = Number(upload?.marsYear);
+  return Number.isFinite(year) ? year : -Infinity;
+}
+
 export function buildOverviewUploadOptions(uploads = []) {
   const grouped = { mcd: [], openmars: [], nomad: [] };
   for (const upload of uploads || []) {
@@ -26,6 +31,27 @@ export function buildOverviewUploadOptions(uploads = []) {
     if (item.dataType === 'nomad') grouped.nomad.push(item);
   }
   return grouped;
+}
+
+export function buildUploadYearOptions(uploads = []) {
+  return [...(uploads || [])]
+    .filter((item) => Number.isFinite(Number(item?.id)))
+    .sort((a, b) => {
+      const yearDiff = marsYearSortValue(b) - marsYearSortValue(a);
+      if (yearDiff !== 0) return yearDiff;
+      const filenameDiff = String(a.filename || '').localeCompare(String(b.filename || ''));
+      if (filenameDiff !== 0) return filenameDiff;
+      return Number(a.id) - Number(b.id);
+    })
+    .map((item) => ({
+      value: String(item.id),
+      label: `MY ${item.marsYear ?? '--'} - ${item.filename}`,
+    }));
+}
+
+export function pickDefaultUploadId(uploads = []) {
+  const first = buildUploadYearOptions(uploads)[0];
+  return first ? Number(first.value) : null;
 }
 
 export function buildOverviewSourceParams({

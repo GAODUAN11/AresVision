@@ -81,6 +81,33 @@ def test_reference_mcd_upload_normalizes_raw_download_fields_for_data_overview()
     assert normalized["mars_year"] == 34
 
 
+def test_ready_mcd_upload_sorts_ozone_and_environment_fields_together():
+    coords = _grid_coords()
+    first_time = np.full((36, 72), 30.0, dtype=np.float32)
+    second_time = np.full((36, 72), 10.0, dtype=np.float32)
+    values = np.stack([first_time, second_time], axis=0)
+    ds = xr.Dataset(
+        data_vars={
+            "Ls": (("time",), np.array([30.0, 10.0], dtype=np.float32)),
+            "o3col": (("time", "lat", "lon"), values),
+            "Temperature": (("time", "lat", "lon"), values + 100.0),
+            "U_Wind": (("time", "lat", "lon"), values + 200.0),
+            "V_Wind": (("time", "lat", "lon"), values + 300.0),
+            "Solar_Flux_DN": (("time", "lat", "lon"), values + 400.0),
+        },
+        coords=coords,
+    )
+
+    normalized = normalize_overview_upload_dataset(ds)
+
+    assert normalized["ls"].tolist() == [10.0, 30.0]
+    assert float(normalized["o3col"][0, 0, 0]) == 10.0
+    assert float(normalized["Temperature"][0, 0, 0]) == 110.0
+    assert float(normalized["U_Wind"][0, 0, 0]) == 210.0
+    assert float(normalized["V_Wind"][0, 0, 0]) == 310.0
+    assert float(normalized["Solar_Flux_DN"][0, 0, 0]) == 410.0
+
+
 def test_reference_mcd_upload_reorders_zero_to_360_longitude_values():
     raw_shape = (8, 37, 72)
     source_lon = np.arange(0.0, 360.0, 5.0, dtype=np.float32)

@@ -5,7 +5,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { GLOBE_VARIABLE_OPTIONS } from '../../constants/globeVariables';
 import { getMyUploads } from '../../services/api';
-import { buildOverviewUploadOptions } from './uploadedSourceOptions';
+import { buildOverviewUploadOptions, buildUploadYearOptions } from './uploadedSourceOptions';
 
 const NAVBAR_HEIGHT = 70;
 
@@ -147,6 +147,135 @@ function SegmentedToggle({ value, onChange, options, disabled = false, isLight =
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function SourceScopePicker({
+  title,
+  desc,
+  sourceName,
+  selectedUploadId,
+  onSelectUpload,
+  personalOptions,
+  officialOptions,
+  officialValue,
+  onOfficialChange,
+  disabled = false,
+  loading = false,
+  showEmptyPersonalHint = true,
+  isLight = false,
+  isZh = false,
+  accent = C.blue,
+}) {
+  const hasPersonalOptions = personalOptions.length > 0;
+  const scope = selectedUploadId ? 'personal' : 'official';
+  const selectOptions = scope === 'personal' ? personalOptions : officialOptions;
+  const officialValueString = String(officialValue);
+  const resolvedOfficialValue = officialOptions.some((option) => option.value === officialValueString)
+    ? officialValueString
+    : officialOptions[0]?.value || '';
+  const selectValue = scope === 'personal'
+    ? (selectedUploadId ? String(selectedUploadId) : personalOptions[0]?.value || '')
+    : resolvedOfficialValue;
+  const selectLabel = scope === 'personal'
+    ? (isZh ? '个人火星年' : 'Personal Mars year')
+    : (isZh ? '官方火星年' : 'Official Mars year');
+  const disabledReason = !hasPersonalOptions && isZh
+    ? '暂无可用于数据总览的个人上传源'
+    : 'No usable personal upload for Data Overview yet';
+
+  const handleScopeChange = (value) => {
+    if (value === 'official') {
+      onSelectUpload(null);
+      return;
+    }
+    const nextUploadId = Number(personalOptions[0]?.value);
+    if (Number.isFinite(nextUploadId)) onSelectUpload(nextUploadId);
+  };
+
+  const handleSelectChange = (value) => {
+    if (scope === 'personal') {
+      onSelectUpload(Number(value));
+      return;
+    }
+    onOfficialChange(value);
+  };
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 10,
+        padding: '12px',
+        borderRadius: 14,
+        border: `1px solid ${isLight ? 'rgba(15,23,42,0.09)' : 'rgba(255,255,255,0.08)'}`,
+        background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.025)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: C.ice, fontSize: 'calc(12px * var(--font-scale, 1))', fontWeight: 800, letterSpacing: '-0.01em' }}>
+            {title}
+          </div>
+          {desc ? (
+            <div style={{ color: C.ice45, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5, marginTop: 3 }}>
+              {desc}
+            </div>
+          ) : null}
+        </div>
+        <span
+          style={{
+            flexShrink: 0,
+            padding: '3px 7px',
+            borderRadius: 999,
+            background: `${accent}18`,
+            color: accent,
+            fontSize: 'calc(9px * var(--font-scale, 1))',
+            fontWeight: 800,
+            letterSpacing: '0.04em',
+          }}
+        >
+          {sourceName}
+        </span>
+      </div>
+
+      <SegmentedToggle
+        value={scope}
+        onChange={handleScopeChange}
+        disabled={disabled || loading}
+        isLight={isLight}
+        options={[
+          {
+            value: 'official',
+            label: isZh ? '官方' : 'Official',
+            activeBg: `${accent}18`,
+            activeColor: accent,
+          },
+          {
+            value: 'personal',
+            label: isZh ? '个人' : 'Personal',
+            activeBg: 'rgba(52,211,153,0.14)',
+            activeColor: '#34d399',
+            disabled: !hasPersonalOptions,
+          },
+        ]}
+      />
+
+      <SelectField
+        label={selectLabel}
+        value={selectValue}
+        onChange={handleSelectChange}
+        options={selectOptions}
+        disabled={disabled || loading || selectOptions.length === 0}
+        isLight={isLight}
+      />
+
+      {!hasPersonalOptions && showEmptyPersonalHint ? (
+        <div style={{ color: C.ice40, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
+          {disabledReason}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -398,6 +527,25 @@ export default function SidebarMenu() {
     [availableMarsYears],
   );
 
+  const mcdUploadYearOptions = React.useMemo(
+    () => buildUploadYearOptions(rawUploadOptions.mcd),
+    [rawUploadOptions.mcd],
+  );
+
+  const openMarsUploadYearOptions = React.useMemo(
+    () => buildUploadYearOptions(rawUploadOptions.openmars),
+    [rawUploadOptions.openmars],
+  );
+
+  const nomadUploadYearOptions = React.useMemo(
+    () => buildUploadYearOptions(rawUploadOptions.nomad),
+    [rawUploadOptions.nomad],
+  );
+
+  const handleOfficialYearChange = React.useCallback((value) => {
+    setMarsYear(Number(value));
+  }, [setMarsYear]);
+
   const handleMouseDown = React.useCallback((e) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -477,19 +625,22 @@ export default function SidebarMenu() {
         <section>
           <SectionLabel>{isZh ? '数据范围' : 'Data scope'}</SectionLabel>
           <div style={{ display: 'grid', gap: 12 }}>
-            <SelectField
-              label={isZh ? '页面 MCD 数据源' : 'Page MCD source'}
-              value={selectedMcdUploadId ? String(selectedMcdUploadId) : 'official'}
-              onChange={(value) => setSelectedMcdUploadId(value === 'official' ? null : Number(value))}
-              options={[
-                { value: 'official', label: isZh ? '官方默认 MCD' : 'Official MCD' },
-                ...rawUploadOptions.mcd.map((item) => ({
-                  value: String(item.id),
-                  label: `${item.filename} / MY ${item.marsYear ?? '--'}`,
-                })),
-              ]}
-              disabled={rawUploadsLoading || isSwitchingSource}
+            <SourceScopePicker
+              title={isZh ? '页面 MCD 数据源' : 'Page MCD source'}
+              desc={isZh ? '驱动数据总览全部二维图表与主球体' : 'Drives all Data Overview charts and the main globe.'}
+              sourceName="MCD"
+              selectedUploadId={selectedMcdUploadId}
+              onSelectUpload={setSelectedMcdUploadId}
+              personalOptions={mcdUploadYearOptions}
+              officialOptions={yearOptions}
+              officialValue={marsYear}
+              onOfficialChange={handleOfficialYearChange}
+              disabled={isSwitchingSource}
+              loading={rawUploadsLoading}
+              showEmptyPersonalHint={Boolean(user)}
               isLight={isLight}
+              isZh={isZh}
+              accent="#f97316"
             />
 
             {!user ? (
@@ -507,15 +658,6 @@ export default function SidebarMenu() {
                 {sourceMessage}
               </div>
             ) : null}
-
-            <SelectField
-              label={isZh ? '火星年' : 'Mars year'}
-              value={String(marsYear)}
-              onChange={(value) => setMarsYear(Number(value))}
-              options={yearOptions}
-              disabled={isSwitchingSource}
-              isLight={isLight}
-            />
 
             <SelectField
               label={isZh ? '球体变量' : 'Globe variable'}
@@ -570,33 +712,39 @@ export default function SidebarMenu() {
                     : 'Right-side analysis stays on MCD; validation compares sparse NOMAD observations against matched MCD cells.'}
                 </div>
                 <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
-                  <SelectField
-                    label={isZh ? 'OpenMARS 臭氧图层' : 'OpenMARS ozone layer'}
-                    value={selectedOpenMarsUploadId ? String(selectedOpenMarsUploadId) : 'official'}
-                    onChange={(value) => setSelectedOpenMarsUploadId(value === 'official' ? null : Number(value))}
-                    options={[
-                      { value: 'official', label: isZh ? '官方 OpenMARS' : 'Official OpenMARS' },
-                      ...rawUploadOptions.openmars.map((item) => ({
-                        value: String(item.id),
-                        label: `${item.filename} / MY ${item.marsYear ?? '--'}`,
-                      })),
-                    ]}
-                    disabled={rawUploadsLoading || isSwitchingSource}
+                  <SourceScopePicker
+                    title={isZh ? 'OpenMARS 臭氧图层' : 'OpenMARS ozone layer'}
+                    desc={isZh ? '用于三维多源臭氧对照展示' : 'Used for 3D multi-source ozone comparison.'}
+                    sourceName="OpenMARS"
+                    selectedUploadId={selectedOpenMarsUploadId}
+                    onSelectUpload={setSelectedOpenMarsUploadId}
+                    personalOptions={openMarsUploadYearOptions}
+                    officialOptions={yearOptions}
+                    officialValue={marsYear}
+                    onOfficialChange={handleOfficialYearChange}
+                    disabled={isSwitchingSource}
+                    loading={rawUploadsLoading}
+                    showEmptyPersonalHint={Boolean(user)}
                     isLight={isLight}
+                    isZh={isZh}
+                    accent="#38bdf8"
                   />
-                  <SelectField
-                    label={isZh ? 'NOMAD 臭氧图层' : 'NOMAD ozone layer'}
-                    value={selectedNomadUploadId ? String(selectedNomadUploadId) : 'official'}
-                    onChange={(value) => setSelectedNomadUploadId(value === 'official' ? null : Number(value))}
-                    options={[
-                      { value: 'official', label: isZh ? '官方 NOMAD' : 'Official NOMAD' },
-                      ...rawUploadOptions.nomad.map((item) => ({
-                        value: String(item.id),
-                        label: `${item.filename} / MY ${item.marsYear ?? '--'}`,
-                      })),
-                    ]}
-                    disabled={rawUploadsLoading || isSwitchingSource}
+                  <SourceScopePicker
+                    title={isZh ? 'NOMAD 臭氧图层' : 'NOMAD ozone layer'}
+                    desc={isZh ? '用于三维观测验证与差值对比' : 'Used for 3D observation validation and difference checks.'}
+                    sourceName="NOMAD"
+                    selectedUploadId={selectedNomadUploadId}
+                    onSelectUpload={setSelectedNomadUploadId}
+                    personalOptions={nomadUploadYearOptions}
+                    officialOptions={yearOptions}
+                    officialValue={marsYear}
+                    onOfficialChange={handleOfficialYearChange}
+                    disabled={isSwitchingSource}
+                    loading={rawUploadsLoading}
+                    showEmptyPersonalHint={Boolean(user)}
                     isLight={isLight}
+                    isZh={isZh}
+                    accent="#34d399"
                   />
                 </div>
               </div>

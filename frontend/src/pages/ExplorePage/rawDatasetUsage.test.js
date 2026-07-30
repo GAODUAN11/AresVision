@@ -9,6 +9,8 @@ test('MCD uploads are full Data Overview page sources', () => {
   assert.equal(usage.key, 'overview_mcd');
   assert.equal(usage.usable, true);
   assert.deepEqual(usage.pages, ['数据总览']);
+  assert.match(usage.desc, /校验并标准化/);
+  assert.match(usage.desc, /右侧图表/);
 });
 
 test('OpenMARS uploads are 3D ozone layer sources only', () => {
@@ -17,6 +19,7 @@ test('OpenMARS uploads are 3D ozone layer sources only', () => {
   assert.equal(usage.key, 'ozone_openmars');
   assert.equal(usage.usable, true);
   assert.deepEqual(usage.pages, ['Data Overview 3D ozone']);
+  assert.match(usage.desc, /validated ozone layer/i);
 });
 
 test('NOMAD uploads are 3D ozone layer sources only', () => {
@@ -25,6 +28,7 @@ test('NOMAD uploads are 3D ozone layer sources only', () => {
   assert.equal(usage.key, 'ozone_nomad');
   assert.equal(usage.usable, true);
   assert.deepEqual(usage.pages, ['Data Overview 3D ozone']);
+  assert.match(usage.desc, /observation counts/i);
 });
 
 test('invalid and rejected uploads are not usable', () => {

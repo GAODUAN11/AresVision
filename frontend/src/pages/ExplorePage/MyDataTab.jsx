@@ -26,8 +26,8 @@ function createCopy(isZh) {
   return {
     myHubTitle: isZh ? '数据总览原始数据集工作台' : 'Data Overview Raw Dataset Workbench',
     myHubDesc: isZh
-      ? '这里管理用户上传的 MCD / OpenMARS / NOMAD 原始数据。MCD 可作为数据总览整页数据源；OpenMARS 与 NOMAD 仅用于三维臭氧多源展示。训练与预测数据由服务器后台管理。'
-      : 'Manage uploaded MCD / OpenMARS / NOMAD raw datasets. MCD can drive Data Overview; OpenMARS and NOMAD are only 3D ozone sources. Training and prediction data are server-managed.',
+      ? '这里管理用户上传的 MCD / OpenMARS / NOMAD 原始数据，并统一校验为数据总览可消费格式。MCD 可作为数据总览整页数据源；OpenMARS 与 NOMAD 仅用于三维臭氧多源展示。训练与预测数据由服务器后台管理。'
+      : 'Manage uploaded MCD / OpenMARS / NOMAD raw datasets and validate them into Data Overview-ready formats. MCD can drive Data Overview; OpenMARS and NOMAD are only 3D ozone sources. Training and prediction data are server-managed.',
     contributionTitle: isZh ? '平台贡献流程' : 'Platform Contribution Flow',
     contributionDesc: isZh
       ? '只有通过基础校验并保持可管理状态的数据，才适合进入公共贡献。提交后会先进入管理员审核，而不会直接并入官方资产。'
@@ -37,8 +37,8 @@ function createCopy(isZh) {
     contributionNone: isZh ? '当前没有可提交贡献的数据集。' : 'No datasets are currently eligible for contribution.',
     canUseTitle: isZh ? '数据总览使用条件' : 'Data Overview Usage',
     canUseDesc: isZh
-      ? '判断该原始数据能否进入数据总览可视化链路。普通用户上传数据不再参与训练或预测。'
-      : 'Whether this raw dataset can be used by Data Overview visualization. User uploads no longer feed training or prediction.',
+      ? '判断该原始数据是否通过总览字段、Ls 与 5° 网格校验。普通用户上传数据不再参与训练或预测。'
+      : 'Whether this raw dataset passes the overview field, Ls, and 5° grid checks. User uploads no longer feed training or prediction.',
     canContributeTitle: isZh ? '公共贡献条件' : 'Contribution Conditions',
     canContributeDesc: isZh
       ? '是否适合进入平台审核流程，争取成为平台公共数据资产。'
@@ -46,11 +46,11 @@ function createCopy(isZh) {
     lifeCycleTitle: isZh ? '生命周期状态' : 'Lifecycle Status',
     sourceModeTitle: isZh ? '数据总览用途' : 'Overview Role',
     sourceModeDesc: isZh
-      ? 'MCD 用于整页数据总览；OpenMARS / NOMAD 仅用于 3D 臭氧多源图层。'
-      : 'MCD drives the full overview page; OpenMARS / NOMAD are only 3D ozone layers.',
+      ? 'MCD 用于整页数据总览；OpenMARS / NOMAD 仅用于 3D 臭氧多源图层。三类数据都会先标准化到总览使用的字段命名。'
+      : 'MCD drives the full overview page; OpenMARS / NOMAD are only 3D ozone layers. All three are normalized to the field names consumed by Overview.',
     ruleValid: isZh ? '上传校验通过' : 'Upload validation passed',
     ruleBuildReady: isZh ? '文件状态可用于数据总览' : 'Upload status is usable for Data Overview',
-    ruleAdopted: isZh ? '数据类型属于 MCD / OpenMARS / NOMAD' : 'Type is MCD / OpenMARS / NOMAD',
+    ruleAdopted: isZh ? '数据类型与字段契约属于 MCD / OpenMARS / NOMAD' : 'Type and field contract are MCD / OpenMARS / NOMAD',
     ruleRejected: isZh ? '用途限定在数据总览，不进入训练或预测' : 'Scoped to Data Overview, not training or prediction',
     ruleContributeBase: isZh ? '状态仍为 valid，可提交审核' : 'Status is still valid and can be submitted',
     ruleContributePending: isZh ? '已进入管理员审核队列' : 'Already in admin review queue',
@@ -1318,8 +1318,8 @@ export default function MyDataTab({ reviewSignal = 0 }) {
                 </div>
                 <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8 }}>
                   {isZh
-                    ? '这里上传的是数据总览可视化原始数据。训练与预测页面使用的融合数据由管理员在服务器后台维护。'
-                    : 'Uploads here are raw datasets for Data Overview visualization. Fusion data for training and prediction is maintained by admins on the server.'}
+                    ? '这里上传的是数据总览可视化原始数据：MCD 需能提供臭氧与环境变量，OpenMARS / NOMAD 需提供网格化臭氧图层。训练与预测页面使用的融合数据由管理员在服务器后台维护。'
+                    : 'Uploads here are raw datasets for Data Overview visualization: MCD must provide ozone plus environmental fields, while OpenMARS / NOMAD provide gridded ozone layers. Fusion data for training and prediction is maintained by admins on the server.'}
                 </div>
               </GlowCard>
 

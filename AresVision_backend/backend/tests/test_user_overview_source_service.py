@@ -96,16 +96,22 @@ def test_uploaded_nomad_validation_compares_shared_cells():
 
 def test_user_data_service_sorts_nomad_count_with_ls(tmp_path):
     path = tmp_path / "nomad.nc"
+    field = np.ones((2, 36, 72), dtype=np.float32)
+    count = np.ones((2, 36, 72), dtype=np.int32)
+    field[0] *= 30.0
+    field[1] *= 10.0
+    count[0] *= 3
+    count[1] *= 1
     ds = xr.Dataset(
         data_vars={
             "Ls": (("time",), np.array([30.0, 10.0], dtype=np.float32)),
-            "o3col": (("time", "lat", "lon"), np.array([[[30.0]], [[10.0]]], dtype=np.float32)),
-            "count": (("time", "lat", "lon"), np.array([[[3]], [[1]]], dtype=np.int32)),
+            "o3col": (("time", "lat", "lon"), field),
+            "count": (("time", "lat", "lon"), count),
         },
         coords={
             "time": np.arange(2),
-            "lat": np.array([0.0], dtype=np.float32),
-            "lon": np.array([0.0], dtype=np.float32),
+            "lat": np.linspace(87.5, -87.5, 36, dtype=np.float32),
+            "lon": np.linspace(-180.0, 175.0, 72, dtype=np.float32),
         },
     )
     ds.to_netcdf(path)
@@ -116,3 +122,38 @@ def test_user_data_service_sorts_nomad_count_with_ls(tmp_path):
     assert loaded["ls"].tolist() == [10.0, 30.0]
     assert loaded["o3col"][:, 0, 0].tolist() == [10.0, 30.0]
     assert loaded["count"][:, 0, 0].tolist() == [1, 3]
+
+
+def test_user_data_service_normalizes_reference_mcd_upload_for_overview(tmp_path):
+    path = tmp_path / "MCD_MY34_global_3h_5deg_10m_ls_lst.nc"
+    shape = (16, 37, 72)
+    ds = xr.Dataset(
+        data_vars={
+            "LS": (("time",), np.linspace(10.0, 20.0, shape[0], dtype=np.float32)),
+            "O3COL": (("time", "lat", "lon"), np.ones(shape, dtype=np.float32)),
+            "T": (("time", "lat", "lon"), np.full(shape, 180.0, dtype=np.float32)),
+            "U": (("time", "lat", "lon"), np.full(shape, 5.0, dtype=np.float32)),
+            "V": (("time", "lat", "lon"), np.full(shape, 2.0, dtype=np.float32)),
+            "FSDS": (("time", "lat", "lon"), np.full(shape, 90.0, dtype=np.float32)),
+            "PS": (("time", "lat", "lon"), np.full(shape, 6.0, dtype=np.float32)),
+        },
+        coords={
+            "time": np.arange(shape[0], dtype=np.int32),
+            "lat": np.linspace(90.0, -90.0, shape[1], dtype=np.float32),
+            "lon": np.linspace(-180.0, 175.0, shape[2], dtype=np.float32),
+        },
+        attrs={"mars_year": 34},
+    )
+    ds.to_netcdf(path)
+    ds.close()
+
+    loaded = UserDataService()._load_nc_file(str(path))
+
+    assert loaded["data_type"] == "mcd"
+    assert loaded["mars_year"] == 34
+    assert loaded["o3col"].shape == (2, 36, 72)
+    assert loaded["Temperature"].shape == loaded["o3col"].shape
+    assert loaded["U_Wind"].shape == loaded["o3col"].shape
+    assert loaded["V_Wind"].shape == loaded["o3col"].shape
+    assert loaded["Solar_Flux_DN"].shape == loaded["o3col"].shape
+    assert loaded["Pressure"].shape == loaded["o3col"].shape

@@ -6,32 +6,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { GLOBE_VARIABLE_OPTIONS } from '../../constants/globeVariables';
 import { getMyUploads } from '../../services/api';
 import { buildOverviewUploadOptions, buildUploadYearOptions } from './uploadedSourceOptions';
+import { MODE_DEFS as SHARED_MODE_DEFS } from './overviewChartLayout';
+
+export { SHARED_MODE_DEFS as MODE_DEFS };
 
 const NAVBAR_HEIGHT = 70;
-
-export const MODE_DEFS = [
-  {
-    id: 'temporal',
-    icon: 'T',
-    color: C.mars,
-    title: { zh: '时序气候演化', en: 'Temporal evolution' },
-    desc: { zh: '适合观察昼夜变化、季节推进与长期趋势。', en: 'Best for diurnal change, seasonal progression, and long-term trends.' },
-  },
-  {
-    id: 'drivers',
-    icon: 'D',
-    color: C.green,
-    title: { zh: '环境归因与驱动', en: 'Environmental drivers' },
-    desc: { zh: '适合查看多变量关系、环境因子和太阳响应。', en: 'Best for multivariate relationships, environmental factors, and solar response.' },
-  },
-  {
-    id: 'dynamics',
-    icon: 'R',
-    color: '#d9a441',
-    title: { zh: '区域动力过程', en: 'Regional dynamics' },
-    desc: { zh: '适合分析极区活动、波动结构和区域异常。', en: 'Best for polar behavior, wave structures, and regional anomalies.' },
-  },
-];
 
 function SectionLabel({ children }) {
   return (
@@ -609,7 +588,7 @@ export default function SidebarMenu() {
         <section>
           <SectionLabel>{isZh ? '分析模式' : 'Analysis mode'}</SectionLabel>
           <div style={{ display: 'grid', gap: 8 }}>
-            {MODE_DEFS.map((mode) => (
+            {SHARED_MODE_DEFS.map((mode) => (
               <RadioModeCard
                 key={mode.id}
                 mode={mode}

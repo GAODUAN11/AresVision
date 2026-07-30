@@ -24,7 +24,10 @@ def _svc(request: Request):
     return request.app.state.user_data_service
 
 
-async def _check_access(upload_id: int, current_user: User) -> UploadRecord:
+ACTIVE_VISUALIZATION_STATUSES = {"valid", "pending_review", "approved"}
+
+
+async def _check_access(upload_id: int, current_user: User, require_active: bool = False) -> UploadRecord:
     """
     检查当前用户是否有权访问该数据集。
     规则：上传者本人 / 管理员 → 所有状态可访问；其他用户 → 仅 approved。
@@ -34,9 +37,10 @@ async def _check_access(upload_id: int, current_user: User) -> UploadRecord:
         record = await db.get(UploadRecord, upload_id)
     if not record:
         raise HTTPException(status_code=404, detail="数据集不存在")
-    if record.user_id == current_user.id or current_user.role == "admin":
-        return record
-    if record.status == "approved":
+    has_direct_access = record.user_id == current_user.id or current_user.role == "admin"
+    if has_direct_access or record.status == "approved":
+        if require_active and record.status not in ACTIVE_VISUALIZATION_STATUSES:
+            raise HTTPException(status_code=403, detail="Dataset status is not available for visualization")
         return record
     raise HTTPException(status_code=403, detail="无权访问此数据集")
 
@@ -67,7 +71,7 @@ async def get_user_globe_data(
     current_user: User = Depends(get_current_user),
 ):
     """获取用户数据集的 3D 点云"""
-    await _check_access(upload_id, current_user)
+    await _check_access(upload_id, current_user, require_active=True)
     try:
         return await _svc(request).get_globe_data(upload_id, ls)
     except ValueError as e:
@@ -84,7 +88,7 @@ async def get_user_heatmap(
     current_user: User = Depends(get_current_user),
 ):
     """获取用户数据集的 Ls-纬度热力图"""
-    await _check_access(upload_id, current_user)
+    await _check_access(upload_id, current_user, require_active=True)
     try:
         return await _svc(request).get_seasonal_heatmap(upload_id, variable)
     except ValueError as e:
@@ -100,7 +104,7 @@ async def get_user_bands(
     current_user: User = Depends(get_current_user),
 ):
     """获取用户数据集的纬度带折线图"""
-    await _check_access(upload_id, current_user)
+    await _check_access(upload_id, current_user, require_active=True)
     try:
         return await _svc(request).get_seasonal_bands(upload_id)
     except ValueError as e:

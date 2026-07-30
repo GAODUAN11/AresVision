@@ -107,7 +107,7 @@ function buildLatitudeBandSummary({ latAxis, matrix, lsAxis, variable, units, is
   });
 }
 
-export default function SeasonalChart({ marsYear, dataSourceMode = 'default' }) {
+export default function SeasonalChart({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
   const isZh = settings?.language !== 'en';
   const isLight = settings?.theme === 'light';
@@ -206,8 +206,8 @@ export default function SeasonalChart({ marsYear, dataSourceMode = 'default' }) 
     let active = true;
     setLoading(true);
     const fetcher = variable === 'o3col'
-      ? fetchOverviewSeasonalHeatmap(marsYear, { dataSource: dataSourceMode })
-      : fetchOverviewEnvHeatmap(marsYear, variable, { dataSource: dataSourceMode });
+      ? fetchOverviewSeasonalHeatmap(marsYear, overviewSourceParams)
+      : fetchOverviewEnvHeatmap(marsYear, variable, overviewSourceParams);
 
     Promise.resolve(fetcher)
       .then((res) => {
@@ -224,7 +224,7 @@ export default function SeasonalChart({ marsYear, dataSourceMode = 'default' }) 
     return () => {
       active = false;
     };
-  }, [marsYear, variable, dataSourceMode]);
+  }, [marsYear, variable, overviewSourceParams]);
 
   useEffect(() => {
     if (data && !loading) {

@@ -33,7 +33,7 @@ test('builds model summary text from a completed training task', () => {
     inputChannelText: 'U / V / D',
     window: 4,
     horizon: 3,
-    dataSource: 'personal',
+    dataSource: 'default',
   });
 });
 
@@ -94,7 +94,7 @@ test('builds parameter matrix rows from compare payload items', () => {
       learningRate: '0.0005',
       earlyStoppingPatience: '5',
       seed: '11',
-      dataSource: 'personal',
+      dataSource: 'default',
     },
   ]);
 });

@@ -3,6 +3,8 @@ import C from '../../constants/colors';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useDataOverview } from '../../contexts/DataOverviewContext';
 import { copilotChat } from '../../services/api';
+import { buildExpandedCardSnapshot } from './aiCopilotSnapshot';
+import { CARD_TITLES as SHARED_CARD_TITLES } from './overviewChartLayout';
 
 const CARD_TITLES = {
   realtime: { zh: '昼夜变化', en: 'Diurnal' },
@@ -15,7 +17,6 @@ const CARD_TITLES = {
   coupling: { zh: '温度耦合', en: 'Temperature Coupling' },
   polar: { zh: '极点聚集', en: 'Polar Dynamics' },
   wave: { zh: '行星波异常', en: 'Wave Explorer' },
-  waveDiag: { zh: '波动诊断', en: 'Wave Diagnostics' },
   distribution: { zh: '点位分布', en: 'Distribution' },
 };
 
@@ -184,7 +185,7 @@ Requirements:
   }, [globalTimeLs, hasTriggered]);
 
   const selectedCardTitle = useMemo(() => {
-    const card = CARD_TITLES[expandedCard];
+    const card = SHARED_CARD_TITLES[expandedCard] || CARD_TITLES[expandedCard];
     if (!card) return expandedCard || copy.unnamed;
     return isZh ? card.zh : card.en;
   }, [copy.unnamed, expandedCard, isZh]);
@@ -200,7 +201,7 @@ Requirements:
     setAiResponse('');
     setHasResult(false);
     try {
-      const snapshot = expandedCard ? getAiInsight(expandedCard) : null;
+      const snapshot = buildExpandedCardSnapshot(getAiInsight, expandedCard);
       const snapshotText = flattenSnapshot(snapshot);
       const dynamicMetrics = snapshotText || copy.noSnapshot;
 

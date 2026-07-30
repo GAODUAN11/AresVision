@@ -11,14 +11,13 @@ export function buildPredictMetricsKey({
   trainingTaskId,
   horizon,
   selectedVars,
-  dataSourceMode,
   marsYear,
   lsStart,
 }) {
   if (modelMode === 'trained') {
     return trainingTaskId ? `trained:${trainingTaskId}:h:${horizon}` : null;
   }
-  return `system:${dataSourceMode}:my:${marsYear}:ls:${lsStart}:h:${horizon}:vars:${normalizeVars(selectedVars)}`;
+  return `system:default:my:${marsYear}:ls:${lsStart}:h:${horizon}:vars:${normalizeVars(selectedVars)}`;
 }
 
 export function buildErrorDistributionKey({
@@ -26,12 +25,10 @@ export function buildErrorDistributionKey({
   trainingTaskId,
   horizon,
   selectedVars,
-  dataSourceMode,
 }) {
   if (modelMode === 'trained') {
     return trainingTaskId ? `trained:${trainingTaskId}:h:${horizon}` : null;
   }
-  if (dataSourceMode === 'personal') return null;
   return `system:default:vars:${normalizeVars(selectedVars)}`;
 }
 

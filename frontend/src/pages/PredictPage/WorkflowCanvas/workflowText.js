@@ -19,7 +19,7 @@ const EN_TEXT = {
     Outputs: 'Outputs',
   },
   templateSubtitles: {
-    [WORKFLOW_NODE_TYPES.DATA_SOURCE]: 'Default / personal',
+    [WORKFLOW_NODE_TYPES.DATA_SOURCE]: 'Server-managed data',
     [WORKFLOW_NODE_TYPES.MARS_CONTEXT]: 'MY + Ls',
     [WORKFLOW_NODE_TYPES.PREDRNN_MODEL]: 'Current inference model',
     [WORKFLOW_NODE_TYPES.TRAINING_CONFIG]: 'Draft hyperparameters',
@@ -40,10 +40,8 @@ const EN_TEXT = {
     [WORKFLOW_NODE_TYPES.TRAINING_CONFIG]: 'TRAIN',
   },
   source: {
-    default: 'Default Source',
-    personal: 'Personal Source',
-    defaultOption: 'Default source',
-    personalOption: 'Personal source',
+    default: 'Server-managed Data',
+    defaultOption: 'Server-managed data',
   },
   actions: {
     run: 'Run Prediction',
@@ -180,10 +178,8 @@ const ZH_TEXT = {
     [WORKFLOW_NODE_TYPES.TRAINING_CONFIG]: '训练',
   },
   source: {
-    default: '默认数据源',
-    personal: '个人数据源',
-    defaultOption: '默认数据源',
-    personalOption: '个人数据源',
+    default: '服务器托管数据源',
+    defaultOption: '服务器托管数据源',
   },
   actions: {
     run: '运行预测',

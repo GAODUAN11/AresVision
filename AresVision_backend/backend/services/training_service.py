@@ -42,6 +42,17 @@ OUTPUT_MODELS_DIR = Path(__file__).parent.parent / "models" / "训练结果"
 OUTPUT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _normalize_training_data_source(data_source: str | None) -> str:
+    source = (data_source or "default").strip().lower()
+    if source == "personal":
+        raise ValueError(
+            "Personal raw uploads are only available in Data Overview; training uses server-managed datasets."
+        )
+    if source not in ("default",):
+        raise ValueError("training data_source must be 'default'")
+    return source
+
+
 class TrainingService:
     def get_available_scripts(self) -> list[str]:
         script_path = MODELS_DIR / UNIFIED_TRAINING_SCRIPT
@@ -71,16 +82,14 @@ class TrainingService:
         if not custom_model_name or not custom_model_name.strip():
             raise ValueError("模型命名不能为空")
 
+        source = _normalize_training_data_source(data_source)
+
         async with async_session_maker() as session:
             existing = await session.execute(
                 select(ModelTrainingTask).where(ModelTrainingTask.custom_model_name == custom_model_name.strip())
             )
             if existing.scalars().first():
                 raise ValueError(f"模型名称 '{custom_model_name}' 已被使用，请换一个名称")
-
-        source = (data_source or "default").strip().lower()
-        if source not in ("default", "personal"):
-            source = "default"
 
         if model_source == "uploaded":
             model_script, raw_hypers = await self._resolve_uploaded_training_entrypoint(
@@ -152,19 +161,6 @@ class TrainingService:
 
             env_overrides: dict[str, str] = dict(transfer_env_overrides)
             temp_data_root: Path | None = None
-
-            if source == "personal":
-                personal_env, temp_data_root, effective_source, source_note = await self._prepare_personal_training_env(
-                    user_id=user_id,
-                    task_id=task_id,
-                    data_service=data_service,
-                    personal_source_service=personal_source_service,
-                )
-                env_overrides.update(personal_env)
-                payload_hypers["_effective_data_source"] = effective_source
-                if source_note:
-                    payload_hypers["_data_source_note"] = source_note
-                task.hyperparameters = json.dumps(payload_hypers)
 
             await session.commit()
             logger.info(
@@ -384,24 +380,7 @@ class TrainingService:
         data_service: DataService | None,
         personal_source_service: PersonalDataSourceService | None,
     ) -> tuple[dict[str, str], Path | None]:
-        try:
-            hyperparameters = json.loads(getattr(task, "hyperparameters", "") or "{}")
-        except Exception:
-            hyperparameters = {}
-
-        requested_source = str(
-            hyperparameters.get("_data_source") or hyperparameters.get("_effective_data_source") or "default"
-        ).strip().lower()
-        if requested_source != "personal":
-            return {}, None
-
-        env_overrides, temp_data_root, _effective_source, _source_note = await self._prepare_personal_training_env(
-            user_id=getattr(task, "user_id", None),
-            task_id=getattr(task, "id", 0),
-            data_service=data_service,
-            personal_source_service=personal_source_service,
-        )
-        return env_overrides, temp_data_root
+        return {}, None
 
     def cleanup_temp_data_root(self, temp_data_root: Path | None) -> None:
         if temp_data_root is not None:

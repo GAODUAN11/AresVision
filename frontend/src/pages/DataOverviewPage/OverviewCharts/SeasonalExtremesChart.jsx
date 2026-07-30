@@ -100,7 +100,7 @@ function buildExtremesFromHeatmap(heatmap, latBands, variable, units) {
   return { bands, amplitude, peak_ls: peakLs };
 }
 
-export default function SeasonalExtremesChart({ marsYear, dataSourceMode = 'default' }) {
+export default function SeasonalExtremesChart({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
@@ -154,8 +154,8 @@ export default function SeasonalExtremesChart({ marsYear, dataSourceMode = 'defa
     setLoading(true);
 
     const fetcher = variable === 'o3col'
-      ? fetchOverviewSeasonalHeatmap(marsYear, { dataSource: dataSourceMode })
-      : fetchOverviewEnvHeatmap(marsYear, variable, { dataSource: dataSourceMode });
+      ? fetchOverviewSeasonalHeatmap(marsYear, overviewSourceParams)
+      : fetchOverviewEnvHeatmap(marsYear, variable, overviewSourceParams);
 
     Promise.resolve(fetcher)
       .then((res) => {
@@ -172,7 +172,7 @@ export default function SeasonalExtremesChart({ marsYear, dataSourceMode = 'defa
     return () => {
       active = false;
     };
-  }, [marsYear, variable, dataSourceMode]);
+  }, [marsYear, variable, overviewSourceParams]);
 
   const data = useMemo(
     () => buildExtremesFromHeatmap(heatmapData, latBands, variable, units),

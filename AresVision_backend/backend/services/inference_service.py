@@ -12,6 +12,7 @@ from pathlib import Path
 from database.models import ModelTrainingTask
 from database.engine import async_session_maker
 from core.metrics import compute_error_distribution, compute_metrics, compute_test_set_metrics
+from core.predict_model import PredRNNv2 as LegacyPredRNNv2
 from services.training_channels import (
     extract_architecture_params,
     get_channels_from_hyperparameters,
@@ -319,22 +320,7 @@ class InferenceService:
         data_service=None,
         personal_source_service=None,
     ):
-        requested_source = str(
-            hypers.get("_data_source") or hypers.get("_effective_data_source") or "default"
-        ).strip().lower()
-        if requested_source != "personal":
-            return {}, None
-        if data_service is None or personal_source_service is None:
-            return {}, None
-
-        from services.training_service import TrainingService
-
-        service = TrainingService()
-        return await service.prepare_task_inference_data_env(
-            task,
-            data_service=data_service,
-            personal_source_service=personal_source_service,
-        )
+        return {}, None
 
     @staticmethod
     def _cleanup_temp_data_root(temp_data_root: Path | None) -> None:
@@ -504,8 +490,9 @@ class InferenceService:
         x_sample = x_torch[sample_idx: sample_idx + 1].to(self.device)
         ls_sample = ls_torch[sample_idx: sample_idx + 1].to(self.device)
 
-        model = build_forecaster(
-            architecture=model_architecture,
+        model, uses_legacy_loader = self._load_official_task_model(
+            task=task,
+            model_architecture=model_architecture,
             input_channels=1 + len(used_mcd_vars),
             selected_channels=list(active_vars),
             hidden_dims=hidden_dims,
@@ -515,13 +502,15 @@ class InferenceService:
             horizon=task_horizon,
             use_sphere=use_sphere,
             architecture_params=architecture_params,
-        ).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
-        model.load_state_dict(state_dict)
-        model.eval()
+        )
 
         with torch.no_grad():
-            pred = model(x_sample, ls_sample)[0, :, 0].cpu().numpy()
+            pred = self._run_official_task_model(
+                model,
+                x_sample,
+                ls_sample,
+                uses_legacy_loader,
+            )[0, :, 0].cpu().numpy()
         truth = y_torch[sample_idx, :, 0].cpu().numpy()
         return pred, truth, y_mean, y_std, list(active_vars)
 
@@ -606,8 +595,9 @@ class InferenceService:
             data_dirs=data_dirs,
         )
 
-        model = build_forecaster(
-            architecture=model_architecture,
+        model, uses_legacy_loader = self._load_official_task_model(
+            task=task,
+            model_architecture=model_architecture,
             input_channels=1 + len(used_mcd_vars),
             selected_channels=list(active_vars),
             hidden_dims=hidden_dims,
@@ -617,10 +607,7 @@ class InferenceService:
             horizon=task_horizon,
             use_sphere=use_sphere,
             architecture_params=architecture_params,
-        ).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
-        model.load_state_dict(state_dict)
-        model.eval()
+        )
 
         split = int(0.8 * len(x_torch))
         x_test = x_torch[split:]
@@ -636,9 +623,11 @@ class InferenceService:
         with torch.no_grad():
             for start in range(0, len(x_test), batch_size):
                 end = min(start + batch_size, len(x_test))
-                pred = model(
+                pred = self._run_official_task_model(
+                    model,
                     x_test[start:end].to(self.device),
                     ls_test[start:end].to(self.device),
+                    uses_legacy_loader,
                 ).cpu().numpy()
                 pred_batches.append(pred[:, :actual_horizon, 0] * (y_std + 1e-6) + y_mean)
                 truth_batches.append(
@@ -775,8 +764,9 @@ class InferenceService:
             task_horizon,
             data_dirs=data_dirs,
         )
-        model = build_forecaster(
-            architecture=model_architecture,
+        model, uses_legacy_loader = self._load_official_task_model(
+            task=task,
+            model_architecture=model_architecture,
             input_channels=1 + len(used_mcd_vars),
             selected_channels=active_channels,
             hidden_dims=hidden_dims,
@@ -786,10 +776,7 @@ class InferenceService:
             horizon=task_horizon,
             use_sphere=use_sphere,
             architecture_params=architecture_params,
-        ).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
-        model.load_state_dict(state_dict)
-        model.eval()
+        )
 
         split = int(0.8 * len(x_torch))
         x_test = x_torch[split:].clone()
@@ -806,7 +793,12 @@ class InferenceService:
 
         def score(batch):
             with torch.no_grad():
-                pred = model(batch.to(self.device), ls_sample.to(self.device)).cpu().numpy()
+                pred = self._run_official_task_model(
+                    model,
+                    batch.to(self.device),
+                    ls_sample.to(self.device),
+                    uses_legacy_loader,
+                ).cpu().numpy()
             truth = y_sample.numpy()
             pred_raw = pred[:, :horizon, 0] * (y_std + 1e-6) + y_mean
             truth_raw = truth[:, :horizon, 0] * (y_std + 1e-6) + y_mean
@@ -946,6 +938,66 @@ class InferenceService:
         return int(np.argmin(diffs))
 
     @staticmethod
+    def _is_legacy_official_state_dict(state_dict) -> bool:
+        keys = list(getattr(state_dict, "keys", lambda: [])())
+        has_legacy_layers = any(key.startswith("layers.") for key in keys)
+        has_legacy_head = any(key.startswith("conv_last.") for key in keys)
+        has_adapter_keys = any(
+            key.startswith("projector.") or key.startswith("backbone.")
+            for key in keys
+        )
+        return has_legacy_layers and has_legacy_head and not has_adapter_keys
+
+    def _load_official_task_model(
+        self,
+        task,
+        model_architecture: str,
+        input_channels: int,
+        selected_channels: list[str],
+        hidden_dims: list[int],
+        height: int,
+        width: int,
+        window: int,
+        horizon: int,
+        use_sphere: bool,
+        architecture_params: dict,
+    ):
+        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
+        uses_legacy_loader = self._is_legacy_official_state_dict(state_dict)
+
+        if uses_legacy_loader:
+            model = LegacyPredRNNv2(
+                input_dim=int(input_channels),
+                hidden_dims=list(hidden_dims or [64, 64, 64]),
+                height=int(height),
+                width=int(width),
+                horizon=int(horizon),
+            ).to(self.device)
+        else:
+            model = build_forecaster(
+                architecture=model_architecture,
+                input_channels=int(input_channels),
+                selected_channels=list(selected_channels),
+                hidden_dims=list(hidden_dims or [64, 64, 64]),
+                height=int(height),
+                width=int(width),
+                window=int(window),
+                horizon=int(horizon),
+                use_sphere=use_sphere,
+                architecture_params=architecture_params,
+            ).to(self.device)
+
+        model.load_state_dict(state_dict)
+        model.eval()
+        return model, uses_legacy_loader
+
+    @staticmethod
+    def _run_official_task_model(model, x_batch: torch.Tensor, ls_batch: torch.Tensor, uses_legacy_loader: bool):
+        if uses_legacy_loader:
+            return model(x_batch)
+        return model(x_batch, ls_batch)
+
+    @staticmethod
     def _channels_to_variable_names(channels: list[str] | str) -> list[str]:
         channel_map = {
             "U": "U_Wind",
@@ -1024,21 +1076,19 @@ class InferenceService:
             )
             
             # 4. 加载模型
-            model = build_forecaster(
-                architecture=model_architecture,
+            model, uses_legacy_loader = self._load_official_task_model(
+                task=task,
+                model_architecture=model_architecture,
                 input_channels=base_input_dim,
                 selected_channels=list(active_vars),
                 hidden_dims=hidden_dims,
-                height=36,
-                width=72,
-                window=window,
-                horizon=horizon,
+                height=int(X_torch.shape[-2]),
+                width=int(X_torch.shape[-1]),
+                window=int(window),
+                horizon=int(horizon),
                 use_sphere=use_sphere,
                 architecture_params=architecture_params,
-            ).to(self.device)
-            state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
-            model.load_state_dict(state_dict)
-            model.eval()
+            )
 
             # 5. 执行推理 (仅针对测试集)
             split = int(0.8 * len(X_torch))
@@ -1054,7 +1104,12 @@ class InferenceService:
                 test_yb = y_test_true[indices]
                 test_lsb = ls_torch[split:][indices].to(self.device)
                 
-                preds = model(test_xb, test_lsb).cpu().numpy()
+                preds = self._run_official_task_model(
+                    model,
+                    test_xb,
+                    test_lsb,
+                    uses_legacy_loader,
+                ).cpu().numpy()
                 trues = test_yb.numpy()
 
             # 6. 反标准化还原物理值

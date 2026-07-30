@@ -14,7 +14,7 @@ const BANDS = [
   'Polar South (60S-90S)',
 ];
 
-export default function SolarSensitivity({ marsYear, dataSourceMode = 'default' }) {
+export default function SolarSensitivity({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
 
   const isLight = settings?.theme === 'light';
@@ -60,6 +60,15 @@ export default function SolarSensitivity({ marsYear, dataSourceMode = 'default' 
       'Polar South (60S-90S)': 'Southern High-Lat (60°S-90°S)'
     }
   };
+  const relationshipCopy = isZh
+    ? {
+      title: '太阳辐射-O3 关系',
+      desc: '展示太阳下行辐射与 O3 的同季节关联；这是关系探索图，不直接表示光化学因果强度。',
+    }
+    : {
+      title: 'Solar Flux-O3 Relationship',
+      desc: 'Explore the seasonal association between downwelling solar flux and O3. This is not a direct causal photochemical efficiency estimate.',
+    };
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +77,7 @@ export default function SolarSensitivity({ marsYear, dataSourceMode = 'default' 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchOverviewSolarPhotochemical(marsYear, activeBand, { dataSource: dataSourceMode })
+    fetchOverviewSolarPhotochemical(marsYear, activeBand, overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -80,7 +89,7 @@ export default function SolarSensitivity({ marsYear, dataSourceMode = 'default' 
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [marsYear, activeBand, dataSourceMode]);
+  }, [marsYear, activeBand, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!data?.solar?.length || !data?.ozone?.length) return null;
@@ -115,8 +124,8 @@ export default function SolarSensitivity({ marsYear, dataSourceMode = 'default' 
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h3 style={{ color: C.ice, margin: '0 0 4px 0', fontSize: 'calc(16px * var(--font-scale, 1))' }}>{copy.title}</h3>
-          <p style={{ color: C.ice60, fontSize: 'calc(12px * var(--font-scale, 1))', margin: 0 }}>{copy.desc}</p>
+          <h3 style={{ color: C.ice, margin: '0 0 4px 0', fontSize: 'calc(16px * var(--font-scale, 1))' }}>{relationshipCopy.title}</h3>
+          <p style={{ color: C.ice60, fontSize: 'calc(12px * var(--font-scale, 1))', margin: 0 }}>{relationshipCopy.desc}</p>
         </div>
         <select
           value={activeBand}

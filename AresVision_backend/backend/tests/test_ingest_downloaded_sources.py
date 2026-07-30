@@ -7,7 +7,16 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from scripts.ingest_downloaded_sources import require_nomad_start_my, sync_openmars_files  # noqa: E402
+from scripts.ingest_downloaded_sources import (  # noqa: E402
+    _default_source_root,
+    require_nomad_start_my,
+    sync_openmars_files,
+)
+
+
+def test_default_source_root_prefers_workspace_data_directory():
+    expected = Path(__file__).resolve().parents[4] / "Data"
+    assert _default_source_root() == expected
 
 
 def test_sync_openmars_files_copies_only_nc_files(tmp_path):

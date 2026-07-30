@@ -218,7 +218,7 @@ export function compilePredictionWorkflow(nodes = [], edges = [], workflowConfig
   const horizon = normalizeHorizon(model?.data?.horizon, DEFAULT_MODEL_CONFIG.horizon);
   const marsYear = Math.round(normalizeNumber(config.marsYear, DEFAULT_CONTEXT_CONFIG.marsYear));
   const lsStart = normalizeNumber(config.lsStart, DEFAULT_CONTEXT_CONFIG.lsStart);
-  const resolvedDataSource = config.dataSource || DEFAULT_DATA_SOURCE_CONFIG.dataSource;
+  const resolvedDataSource = DEFAULT_DATA_SOURCE_CONFIG.dataSource;
 
   return {
     dataSource: resolvedDataSource,
@@ -277,6 +277,6 @@ export function compileTrainingDraft(nodes = [], edges = [], workflowConfig = {}
     selectedVariables,
     selectedScript,
     hyperparameters,
-    dataSource: config.dataSource || DEFAULT_DATA_SOURCE_CONFIG.dataSource,
+    dataSource: DEFAULT_DATA_SOURCE_CONFIG.dataSource,
   };
 }

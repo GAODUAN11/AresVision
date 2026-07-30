@@ -15,6 +15,10 @@ DATA_DIR = BASE_DIR / "data"
 OPENMARS_DIR = DATA_DIR / "openmars"
 MCD_DIR = DATA_DIR / "mcd"
 MCD_OVERVIEW_DIR = DATA_DIR / "mcd_overview"
+MCD_RAW_3H_DIR = Path(os.getenv(
+    "MCD_RAW_3H_DIR",
+    BASE_DIR.parents[2] / "Data" / "MCD_Output_global_10m_ls_lst",
+))
 NOMAD_DIR = DATA_DIR / "nomad"
 MODEL_DIR = BASE_DIR / "models" / "predrnnv2"
 PERF_CACHE_DIR = DATA_DIR / "perf_cache"

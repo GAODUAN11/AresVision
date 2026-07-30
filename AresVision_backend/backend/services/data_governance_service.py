@@ -22,12 +22,15 @@ from sqlalchemy.orm import selectinload
 from config import APPROVED_DIR, MCD_VARIABLES, N_LAT, N_LON
 from database.engine import async_session_maker
 from database.models import DatasetLineageEvent, DatasetQualitySnapshot, UploadRecord, User
+from services.overview_upload_contract import MCD_REQUIRED_FIELDS, normalize_overview_upload_dataset
 
 logger = logging.getLogger("aresvision.data_governance")
 
 _OPENMARS = "openmars"
 _MCD = "mcd"
+_NOMAD = "nomad"
 _STATUS_ORDER = ["valid", "invalid", "pending_review", "approved", "rejected"]
+_OVERVIEW_DATA_KEYS = {"data_type", "lat", "lon", "ls", "mars_year"}
 
 _LAT_ALIASES = ("lat", "latitude")
 _LON_ALIASES = ("lon", "longitude")
@@ -505,6 +508,55 @@ class DataGovernanceService:
             return _MCD
         return "unknown"
 
+    @staticmethod
+    def _overview_variables(data: dict) -> list[str]:
+        return sorted([name for name in data.keys() if name not in _OVERVIEW_DATA_KEYS])
+
+    @staticmethod
+    def _extract_normalized_ls_values(data: dict) -> np.ndarray:
+        try:
+            vals = np.asarray(data.get("ls", []), dtype=float).reshape(-1)
+        except Exception:
+            return np.array([], dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            return vals
+        return np.unique(np.sort(vals))
+
+    def _try_normalize_overview_record(self, record: UploadRecord, ds: xr.Dataset) -> Optional[dict]:
+        data_type = (record.data_type or "").lower()
+        if data_type not in {_MCD, _OPENMARS, _NOMAD}:
+            return None
+        try:
+            return normalize_overview_upload_dataset(ds, filename=record.filename or "")
+        except Exception as exc:
+            logger.debug("Falling back to raw governance scan for upload %s: %s", record.id, exc)
+            return None
+
+    def _meta_from_normalized_overview(self, record: UploadRecord, data: dict) -> dict:
+        ls_values = self._extract_normalized_ls_values(data)
+        ls_range = None
+        ls_coverage = None
+        if ls_values.size:
+            ls_min = float(ls_values[0])
+            ls_max = float(ls_values[-1])
+            ls_range = [ls_min, ls_max]
+            ls_coverage = round(max(0.0, min(1.0, (ls_max - ls_min) / 360.0)), 4)
+
+        return {
+            "data_type": data.get("data_type") or record.data_type or "unknown",
+            "variables": self._overview_variables(data),
+            "lat_points": int(np.asarray(data.get("lat", [])).shape[0]),
+            "lon_points": int(np.asarray(data.get("lon", [])).shape[0]),
+            "ls_points": int(ls_values.size),
+            "ls_range": ls_range,
+            "ls_coverage": ls_coverage,
+            "lat_name": "lat",
+            "lon_name": "lon",
+            "ls_name": "ls",
+            "uses_overview_contract": True,
+        }
+
     def _empty_meta(self, record: UploadRecord) -> dict:
         ls_range = None
         if record.ls_start is not None and record.ls_end is not None:
@@ -526,6 +578,12 @@ class DataGovernanceService:
             return cached
 
         with xr.open_dataset(file_path, decode_times=False) as ds:
+            normalized = self._try_normalize_overview_record(record, ds)
+            if normalized is not None:
+                meta = self._meta_from_normalized_overview(record, normalized)
+                self._meta_cache[key] = meta
+                return meta
+
             variables = sorted(list(ds.data_vars))
             names = list(ds.dims) + list(ds.coords) + list(ds.data_vars)
 
@@ -565,8 +623,10 @@ class DataGovernanceService:
     def _required_vars(data_type: str) -> list[str]:
         if data_type == _OPENMARS:
             return ["o3col"]
+        if data_type == _NOMAD:
+            return ["o3col", "count"]
         if data_type == _MCD:
-            return list(MCD_VARIABLES)
+            return list(MCD_REQUIRED_FIELDS)
         return []
 
     def _pick_primary_var(self, ds: xr.Dataset, data_type: str, required_vars: list[str]) -> Optional[str]:
@@ -578,6 +638,15 @@ class DataGovernanceService:
         if ds.data_vars:
             return list(ds.data_vars)[0]
         return None
+
+    def _pick_primary_overview_var(self, data: dict, required_vars: list[str]) -> Optional[str]:
+        if "o3col" in data:
+            return "o3col"
+        for var in required_vars:
+            if var in data:
+                return var
+        variables = self._overview_variables(data)
+        return variables[0] if variables else None
 
     @staticmethod
     def _grid_score(lat_points: int, lon_points: int) -> tuple[float, dict]:
@@ -619,19 +688,34 @@ class DataGovernanceService:
         issues: list[str] = []
 
         with xr.open_dataset(file_path, decode_times=False) as ds:
-            data_type = meta.get("data_type") or record.data_type or "unknown"
+            normalized = self._try_normalize_overview_record(record, ds) if meta.get("uses_overview_contract") else None
+            data_type = (normalized or meta).get("data_type") or record.data_type or "unknown"
             required_vars = self._required_vars(data_type)
-            present_required = [v for v in required_vars if v in ds.data_vars]
-            missing_required = [v for v in required_vars if v not in ds.data_vars]
-            variable_completeness = (
-                len(present_required) / len(required_vars) if required_vars else 1.0
-            )
 
-            primary_var = self._pick_primary_var(ds, data_type, required_vars)
+            if normalized is not None:
+                variable_names = set(self._overview_variables(normalized))
+                present_required = [v for v in required_vars if v in variable_names]
+                missing_required = [v for v in required_vars if v not in variable_names]
+                variable_completeness = (
+                    len(present_required) / len(required_vars) if required_vars else 1.0
+                )
+                primary_var = self._pick_primary_overview_var(normalized, required_vars)
+                ls_values = self._extract_normalized_ls_values(normalized)
+                values = np.asarray(normalized[primary_var], dtype=float) if primary_var else None
+            else:
+                present_required = [v for v in required_vars if v in ds.data_vars]
+                missing_required = [v for v in required_vars if v not in ds.data_vars]
+                variable_completeness = (
+                    len(present_required) / len(required_vars) if required_vars else 1.0
+                )
+                primary_var = self._pick_primary_var(ds, data_type, required_vars)
+                ls_values = self._extract_ls_values(ds, meta.get("ls_name"))
+                values = np.asarray(ds[primary_var].values, dtype=float) if primary_var else None
+
             missing_rate = 1.0
             valid_ratio = 0.0
-            if primary_var:
-                arr = np.asarray(ds[primary_var].values, dtype=float)
+            if values is not None:
+                arr = values
                 if arr.ndim == 4:
                     arr = np.nanmean(arr, axis=1)
                 flat = arr.reshape(-1)
@@ -642,7 +726,6 @@ class DataGovernanceService:
             else:
                 issues.append("No primary variable found for quality scoring")
 
-            ls_values = self._extract_ls_values(ds, meta.get("ls_name"))
             time_score, time_detail = self._time_continuity_score(ls_values)
 
         grid_score, grid_detail = self._grid_score(meta.get("lat_points", 0), meta.get("lon_points", 0))

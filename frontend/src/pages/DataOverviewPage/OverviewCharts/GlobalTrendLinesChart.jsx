@@ -5,6 +5,7 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { loadResearchSuiteCached } from './ResearchDataClient';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import { movingAverageSeries } from './chartSeries';
 
 const LABELS = {
   o3: { zh: '臭氧', en: 'O3' },
@@ -14,8 +15,15 @@ const LABELS = {
 };
 
 const DISPLAY_SERIES_KEYS = ['o3', 'temp', 'solar', 'wind'];
+const SMOOTH_WINDOW = 21;
 
-export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'default' }) {
+function alphaColor(color, alpha = '33') {
+  return typeof color === 'string' && color.startsWith('#') && color.length === 7
+    ? `${color}${alpha}`
+    : color;
+}
+
+export default function GlobalTrendLinesChart({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
@@ -46,7 +54,7 @@ export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'defa
     let active = true;
     setLoading(true);
 
-    loadResearchSuiteCached(marsYear, { dataSource: dataSourceMode })
+    loadResearchSuiteCached(marsYear, overviewSourceParams)
       .then((res) => {
         if (active) setData(res?.trend_lines || null);
       })
@@ -61,7 +69,7 @@ export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'defa
     return () => {
       active = false;
     };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const traces = useMemo(() => {
     const ls = data?.ls || [];
@@ -73,17 +81,34 @@ export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'defa
       wind: '#d2b48c',
     };
 
-    return DISPLAY_SERIES_KEYS.filter((key) => Array.isArray(series[key])).map((key) => {
+    const smoothSuffix = isZh ? '平滑趋势' : 'smoothed trend';
+    const rawSuffix = isZh ? '原始' : 'raw';
+
+    return DISPLAY_SERIES_KEYS.filter((key) => Array.isArray(series[key])).flatMap((key) => {
       const label = LABELS[key] ? (isZh ? LABELS[key].zh : LABELS[key].en) : key.toUpperCase();
-      return {
-        x: ls,
-        y: series[key],
-        type: 'scatter',
-        mode: 'lines',
-        name: label,
-        line: { width: key === 'o3' ? 3 : 2, color: palette[key] || C.blue, shape: 'spline' },
-        hovertemplate: `${label} %{y:.3f}<extra></extra>`,
-      };
+      const color = palette[key] || C.blue;
+      const smoothed = movingAverageSeries(series[key], SMOOTH_WINDOW);
+      return [
+        {
+          x: ls,
+          y: series[key],
+          type: 'scatter',
+          mode: 'lines',
+          name: `${label} ${rawSuffix}`,
+          line: { width: 1, color: alphaColor(color, '30') },
+          hovertemplate: `${label} ${rawSuffix} %{y:.3f}<extra></extra>`,
+          showlegend: false,
+        },
+        {
+          x: ls,
+          y: smoothed,
+          type: 'scatter',
+          mode: 'lines',
+          name: `${label} ${smoothSuffix}`,
+          line: { width: key === 'o3' ? 3 : 2.5, color, shape: 'spline' },
+          hovertemplate: `${label} ${smoothSuffix} %{y:.3f}<extra></extra>`,
+        },
+      ];
     });
   }, [data, isZh]);
 
@@ -163,6 +188,7 @@ export default function GlobalTrendLinesChart({ marsYear, dataSourceMode = 'defa
         }}
       >
         <span style={{ color: C.ice, fontWeight: 700 }}>{copy.noteTitle}</span> {copy.noteBody}
+        <span> {isZh ? '淡线为原始日尺度序列，粗线为 21 点移动平均趋势。' : 'Faint lines are raw daily-scale series; bold lines are 21-point moving averages.'}</span>
       </div>
     </div>
   );

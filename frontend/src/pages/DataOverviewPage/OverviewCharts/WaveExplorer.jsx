@@ -5,8 +5,9 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewZonalAnomaly } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
+import WaveBandDiagnosticsChart from './WaveBandDiagnosticsChart';
 
-export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
+export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
 
   const isLight = settings?.theme === 'light';
@@ -39,7 +40,7 @@ export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchOverviewZonalAnomaly(marsYear, 'o3col', { dataSource: dataSourceMode })
+    fetchOverviewZonalAnomaly(marsYear, 'o3col', overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -51,7 +52,7 @@ export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!data?.x?.length || !data?.y?.length || !data?.z?.length) return null;
@@ -82,16 +83,8 @@ export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
 
   useAiInsightRegistration('wave', aiInsightProvider);
 
-  if (loading) {
-    return <div style={{ color: C.ice, padding: 20 }}>{copy.loading}</div>;
-  }
-
-  if (!data || !data.x) {
-    return <div style={{ color: C.ice, padding: 20 }}>{copy.noData}</div>;
-  }
-
-  // Calculate dynamic colorscale limits to be symmetrical around 0
-  const maxAbs = Math.max(Math.abs(data.min || 0), Math.abs(data.max || 0));
+  const hasHeatmap = Boolean(data?.x?.length && data?.y?.length && data?.z?.length);
+  const maxAbs = hasHeatmap ? Math.max(Math.abs(data.min || 0), Math.abs(data.max || 0)) : 0;
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -100,47 +93,62 @@ export default function WaveExplorer({ marsYear, dataSourceMode = 'default' }) {
         <p style={{ color: C.ice60, fontSize: 'calc(12px * var(--font-scale, 1))', margin: 0 }}>{copy.desc}</p>
       </div>
       <div style={{ height: '360px' }}>
-        <Plot
-          data={[
-            {
-              z: data.z,
-              x: data.x,
-              y: data.y,
-              type: 'heatmap',
-              colorscale: 'RdBu',
-              zmin: -maxAbs,
-              zmax: maxAbs,
-              colorbar: {
-                title: copy.colorbarTitle,
-                titleside: 'right',
-                titlefont: { color: plotText, size: 10  },
-                tickfont: { color: plotText, size: 10  },
-                outlinewidth: 0,
-                xpad: 10
+        {loading ? (
+          <div style={{ color: C.ice, padding: 20 }}>{copy.loading}</div>
+        ) : !hasHeatmap ? (
+          <div style={{ color: C.ice, padding: 20 }}>{copy.noData}</div>
+        ) : (
+          <Plot
+            data={[
+              {
+                z: data.z,
+                x: data.x,
+                y: data.y,
+                type: 'heatmap',
+                colorscale: 'RdBu',
+                zmin: -maxAbs,
+                zmax: maxAbs,
+                colorbar: {
+                  title: copy.colorbarTitle,
+                  titleside: 'right',
+                  titlefont: { color: plotText, size: 10  },
+                  tickfont: { color: plotText, size: 10  },
+                  outlinewidth: 0,
+                  xpad: 10
+                }
               }
-            }
-          ]}
-          layout={{
-            autosize: true,
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent',
-            margin: { l: 50, r: 20, t: 30, b: 40 },
-            xaxis: {
-              title: copy.lonAxis,
-              gridcolor: plotGrid,
-              tickfont: { color: plotText, size: 10  },
-              titlefont: { color: plotText, size: 11  }
-            },
-            yaxis: {
-              title: copy.latAxis,
-              gridcolor: plotGrid,
-              tickfont: { color: plotText, size: 10  },
-              titlefont: { color: plotText, size: 11  }
-            }
-          }}
-          config={{ displayModeBar: false, responsive: true }}
-          useResizeHandler
-          style={{ width: '100%', height: '100%' }}
+            ]}
+            layout={{
+              autosize: true,
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              margin: { l: 50, r: 20, t: 30, b: 40 },
+              xaxis: {
+                title: copy.lonAxis,
+                gridcolor: plotGrid,
+                tickfont: { color: plotText, size: 10  },
+                titlefont: { color: plotText, size: 11  }
+              },
+              yaxis: {
+                title: copy.latAxis,
+                gridcolor: plotGrid,
+                tickfont: { color: plotText, size: 10  },
+                titlefont: { color: plotText, size: 11  }
+              }
+            }}
+            config={{ displayModeBar: false, responsive: true }}
+            useResizeHandler
+            style={{ width: '100%', height: '100%' }}
+          />
+        )}
+      </div>
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+        <WaveBandDiagnosticsChart
+          marsYear={marsYear}
+          overviewSourceParams={overviewSourceParams}
+          baseData={data}
+          baseLoading={loading}
+          baseVariable="o3col"
         />
       </div>
     </div>

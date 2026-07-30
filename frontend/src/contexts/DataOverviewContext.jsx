@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
 const DataOverviewContext = createContext();
 
@@ -15,7 +15,9 @@ export const DataOverviewProvider = ({ children }) => {
   const [selectedCoordinate, setSelectedCoordinate] = useState(null);
   const [marsYear, setMarsYear] = useState(27);
   const [availableMarsYears, setAvailableMarsYears] = useState([27, 28]);
-  const [dataSourceMode, setDataSourceMode] = useState('default');
+  const [selectedMcdUploadId, setSelectedMcdUploadId] = useState(null);
+  const [selectedOpenMarsUploadId, setSelectedOpenMarsUploadId] = useState(null);
+  const [selectedNomadUploadId, setSelectedNomadUploadId] = useState(null);
   const [isSwitchingSource, setIsSwitchingSource] = useState(false);
   const [sourceMeta, setSourceMeta] = useState(null);
   const [overviewTimeline, setOverviewTimeline] = useState({ min: 0, max: 360, step: 5 });
@@ -68,6 +70,12 @@ export const DataOverviewProvider = ({ children }) => {
     }
   }, []);
 
+  const overviewSourceParams = useMemo(() => ({
+    mcdUploadId: selectedMcdUploadId,
+    openmarsUploadId: selectedOpenMarsUploadId,
+    nomadUploadId: selectedNomadUploadId,
+  }), [selectedMcdUploadId, selectedOpenMarsUploadId, selectedNomadUploadId]);
+
   const contextValue = {
     expandedCard,
     setExpandedCard,
@@ -79,8 +87,13 @@ export const DataOverviewProvider = ({ children }) => {
     setMarsYear,
     availableMarsYears,
     setAvailableMarsYears,
-    dataSourceMode,
-    setDataSourceMode,
+    selectedMcdUploadId,
+    setSelectedMcdUploadId,
+    selectedOpenMarsUploadId,
+    setSelectedOpenMarsUploadId,
+    selectedNomadUploadId,
+    setSelectedNomadUploadId,
+    overviewSourceParams,
     isSwitchingSource,
     setIsSwitchingSource,
     sourceMeta,

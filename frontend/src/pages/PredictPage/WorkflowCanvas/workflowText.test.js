@@ -15,7 +15,8 @@ test('creates Chinese workflow canvas labels from the existing language setting'
   assert.equal(text.palette.title, '工作流节点');
   assert.equal(text.actions.run, '运行预测');
   assert.equal(text.status.running, '运行中');
-  assert.equal(text.source.default, '默认数据源');
+  assert.equal(text.source.default, '服务器托管数据源');
+  assert.equal(Object.hasOwn(text.source, 'personal'), false);
   assert.equal(getTemplateGroupLabel('Input Channels', text), '输入通道');
   assert.equal(getOutputLabel(WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION, text), '误差分布');
 });
@@ -26,7 +27,8 @@ test('keeps English workflow canvas labels when language is English', () => {
   assert.equal(text.canvas.title, 'Neural Workflow Canvas');
   assert.equal(text.palette.title, 'Workflow Nodes');
   assert.equal(text.actions.sendToTraining, 'Send To Training');
-  assert.equal(text.source.personal, 'Personal Source');
+  assert.equal(text.source.default, 'Server-managed Data');
+  assert.equal(Object.hasOwn(text.source, 'personal'), false);
   assert.equal(getTemplateGroupLabel('Outputs', text), 'Outputs');
   assert.equal(getOutputLabel(WORKFLOW_OUTPUTS.PFI, text), 'PFI');
 });

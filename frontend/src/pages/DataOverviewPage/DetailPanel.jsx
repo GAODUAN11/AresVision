@@ -14,33 +14,11 @@ import SolarSensitivity from './OverviewCharts/SolarSensitivity';
 import WaveExplorer from './OverviewCharts/WaveExplorer';
 import SeasonalExtremesChart from './OverviewCharts/SeasonalExtremesChart';
 import GlobalTrendLinesChart from './OverviewCharts/GlobalTrendLinesChart';
-import WaveBandDiagnosticsChart from './OverviewCharts/WaveBandDiagnosticsChart';
-import { MODE_DEFS } from './SidebarMenu';
+import { getCardTitle, getModeCardKeys, MODE_DEFS } from './overviewChartLayout';
 
 const NAVBAR_HEIGHT = 70;
 
-const MODE_CARD_KEYS = {
-  temporal: ['realtime', 'seasonal', 'seasonalExtremes', 'globalTrend'],
-  drivers: ['correlation', 'environment', 'solarsens'],
-  dynamics: ['coupling', 'polar', 'wave', 'waveDiag'],
-};
-
-const CARD_TITLES = {
-  realtime: { zh: '昼夜变化', en: 'Diurnal' },
-  seasonal: { zh: '季节变化', en: 'Seasonal' },
-  seasonalExtremes: { zh: '季节极值', en: 'Seasonal extremes' },
-  globalTrend: { zh: '全球趋势', en: 'Global trends' },
-  environment: { zh: '环境因子', en: 'Environment' },
-  solarsens: { zh: '太阳敏感性', en: 'Solar sensitivity' },
-  wave: { zh: '波动结构', en: 'Wave explorer' },
-  waveDiag: { zh: '波动诊断', en: 'Wave diagnostics' },
-  polar: { zh: '极区动力', en: 'Polar dynamics' },
-  coupling: { zh: '温度耦合', en: 'Temperature coupling' },
-  distribution: { zh: '点位分布', en: 'Distribution' },
-  correlation: { zh: '点位相关', en: 'Correlation' },
-};
-
-export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
+export default function DetailPanel({ sliceData, overviewSourceParams = {} }) {
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
@@ -113,7 +91,7 @@ export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
 
   const getActiveCards = useCallback(() => {
     if (selectedCoordinate) return ['distribution'];
-    return MODE_CARD_KEYS[activeAnalysisMode] || [];
+    return getModeCardKeys(activeAnalysisMode);
   }, [activeAnalysisMode, selectedCoordinate]);
 
   const activeCards = useMemo(() => getActiveCards(), [getActiveCards]);
@@ -147,16 +125,15 @@ export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
     };
   }, [expandedCard, activeAnalysisMode, selectedCoordinate]);
 
-  const realtimeComponent = useMemo(() => <RealtimeMonitor marsYear={marsYear} lsValue={globalTimeLs} dataSourceMode={dataSourceMode} />, [marsYear, globalTimeLs, dataSourceMode]);
-  const seasonalComponent = useMemo(() => <SeasonalChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const seasonalExtremesComponent = useMemo(() => <SeasonalExtremesChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const globalTrendComponent = useMemo(() => <GlobalTrendLinesChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const environmentComponent = useMemo(() => <EnvironmentDashboard marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const solarsensComponent = useMemo(() => <SolarSensitivity marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const waveComponent = useMemo(() => <WaveExplorer marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const waveDiagComponent = useMemo(() => <WaveBandDiagnosticsChart marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const polarComponent = useMemo(() => <PolarDynamics marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
-  const couplingComponent = useMemo(() => <CouplingAnalysis marsYear={marsYear} dataSourceMode={dataSourceMode} />, [marsYear, dataSourceMode]);
+  const realtimeComponent = useMemo(() => <RealtimeMonitor marsYear={marsYear} lsValue={globalTimeLs} overviewSourceParams={overviewSourceParams} />, [marsYear, globalTimeLs, overviewSourceParams]);
+  const seasonalComponent = useMemo(() => <SeasonalChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const seasonalExtremesComponent = useMemo(() => <SeasonalExtremesChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const globalTrendComponent = useMemo(() => <GlobalTrendLinesChart marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const environmentComponent = useMemo(() => <EnvironmentDashboard marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const solarsensComponent = useMemo(() => <SolarSensitivity marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const waveComponent = useMemo(() => <WaveExplorer marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const polarComponent = useMemo(() => <PolarDynamics marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
+  const couplingComponent = useMemo(() => <CouplingAnalysis marsYear={marsYear} overviewSourceParams={overviewSourceParams} />, [marsYear, overviewSourceParams]);
   const distributionComponent = useMemo(
     () => (
       <DataDistribution
@@ -169,23 +146,22 @@ export default function DetailPanel({ sliceData, dataSourceMode = 'default' }) {
     [marsYear, globalTimeLs, sliceData, selectedCoordinate],
   );
   const correlationComponent = useMemo(
-    () => <CorrelationMatrix marsYear={marsYear} coordinate={selectedCoordinate} dataSourceMode={dataSourceMode} />,
-    [marsYear, selectedCoordinate, dataSourceMode],
+    () => <CorrelationMatrix marsYear={marsYear} coordinate={selectedCoordinate} overviewSourceParams={overviewSourceParams} />,
+    [marsYear, selectedCoordinate, overviewSourceParams],
   );
 
   const cardsMap = {
-    realtime: { title: isZh ? CARD_TITLES.realtime.zh : CARD_TITLES.realtime.en, component: realtimeComponent, color: C.mars },
-    seasonal: { title: isZh ? CARD_TITLES.seasonal.zh : CARD_TITLES.seasonal.en, component: seasonalComponent, color: C.blue },
-    seasonalExtremes: { title: isZh ? CARD_TITLES.seasonalExtremes.zh : CARD_TITLES.seasonalExtremes.en, component: seasonalExtremesComponent, color: '#f09c4a' },
-    globalTrend: { title: isZh ? CARD_TITLES.globalTrend.zh : CARD_TITLES.globalTrend.en, component: globalTrendComponent, color: C.green },
-    environment: { title: isZh ? CARD_TITLES.environment.zh : CARD_TITLES.environment.en, component: environmentComponent, color: C.green },
-    solarsens: { title: isZh ? CARD_TITLES.solarsens.zh : CARD_TITLES.solarsens.en, component: solarsensComponent, color: '#d9a441' },
-    wave: { title: isZh ? CARD_TITLES.wave.zh : CARD_TITLES.wave.en, component: waveComponent, color: '#d2b48c' },
-    waveDiag: { title: isZh ? CARD_TITLES.waveDiag.zh : CARD_TITLES.waveDiag.en, component: waveDiagComponent, color: '#6aa9ff' },
-    polar: { title: isZh ? CARD_TITLES.polar.zh : CARD_TITLES.polar.en, component: polarComponent, color: '#cbeef3' },
-    coupling: { title: isZh ? CARD_TITLES.coupling.zh : CARD_TITLES.coupling.en, component: couplingComponent, color: '#ffb347' },
-    distribution: { title: isZh ? CARD_TITLES.distribution.zh : CARD_TITLES.distribution.en, component: distributionComponent, color: C.mars },
-    correlation: { title: isZh ? CARD_TITLES.correlation.zh : CARD_TITLES.correlation.en, component: correlationComponent, color: C.blue },
+    realtime: { title: getCardTitle('realtime', isZh), component: realtimeComponent, color: C.mars },
+    seasonal: { title: getCardTitle('seasonal', isZh), component: seasonalComponent, color: C.blue },
+    seasonalExtremes: { title: getCardTitle('seasonalExtremes', isZh), component: seasonalExtremesComponent, color: '#f09c4a' },
+    globalTrend: { title: getCardTitle('globalTrend', isZh), component: globalTrendComponent, color: C.green },
+    environment: { title: getCardTitle('environment', isZh), component: environmentComponent, color: C.green },
+    solarsens: { title: getCardTitle('solarsens', isZh), component: solarsensComponent, color: '#d9a441' },
+    wave: { title: getCardTitle('wave', isZh), component: waveComponent, color: '#d2b48c' },
+    polar: { title: getCardTitle('polar', isZh), component: polarComponent, color: '#cbeef3' },
+    coupling: { title: getCardTitle('coupling', isZh), component: couplingComponent, color: '#ffb347' },
+    distribution: { title: getCardTitle('distribution', isZh), component: distributionComponent, color: C.mars },
+    correlation: { title: getCardTitle('correlation', isZh), component: correlationComponent, color: C.blue },
   };
 
   const currentModeInfo = selectedCoordinate

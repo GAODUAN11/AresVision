@@ -5,6 +5,7 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewZonalAnomaly } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
+import { resolveWaveDiagnosticsSource } from './waveDiagnosticsSource';
 
 const VARIABLE_OPTIONS = [
   { id: 'o3col', zh: '臭氧柱浓度', en: 'Ozone Column' },
@@ -52,7 +53,13 @@ function calcSpan(values) {
   return Math.max(...values) - Math.min(...values);
 }
 
-export default function WaveBandDiagnosticsChart({ marsYear, dataSourceMode = 'default' }) {
+export default function WaveBandDiagnosticsChart({
+  marsYear,
+  overviewSourceParams = {},
+  baseData = null,
+  baseLoading = false,
+  baseVariable = null,
+}) {
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
   const isZh = settings?.language !== 'en';
@@ -103,9 +110,23 @@ export default function WaveBandDiagnosticsChart({ marsYear, dataSourceMode = 'd
 
   useEffect(() => {
     let active = true;
+    const source = resolveWaveDiagnosticsSource({
+      variable,
+      baseVariable,
+      baseData,
+      baseLoading,
+    });
+
+    if (!source.shouldFetch) {
+      setRawData(source.data);
+      setLoading(source.loading);
+      return undefined;
+    }
+
+    setRawData(null);
     setLoading(true);
 
-    fetchOverviewZonalAnomaly(marsYear, variable, { dataSource: dataSourceMode })
+    fetchOverviewZonalAnomaly(marsYear, variable, overviewSourceParams)
       .then((res) => {
         if (active) setRawData(res || null);
       })
@@ -120,7 +141,7 @@ export default function WaveBandDiagnosticsChart({ marsYear, dataSourceMode = 'd
     return () => {
       active = false;
     };
-  }, [marsYear, variable, dataSourceMode]);
+  }, [baseData, baseLoading, baseVariable, marsYear, variable, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!rawData?.z?.length || !rawData?.x?.length || !rawData?.y?.length) return null;

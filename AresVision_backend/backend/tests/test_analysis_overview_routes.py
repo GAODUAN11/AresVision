@@ -193,20 +193,27 @@ def test_overview_info_uses_default_service():
     assert 27 in payload["available_years"]
     assert 28 in payload["available_years"]
     assert payload["available_years"] == sorted(payload["available_years"])
-    assert payload["timeline"]["min"] == 0.0
+    assert 0.0 < payload["timeline"]["min"] < 1.0
+    assert payload["timeline"]["max"] > 359.0
     assert payload["source_meta"]["effective_source"] == "default"
 
 
-def test_overview_info_falls_back_when_personal_is_requested():
+def test_overview_info_rejects_legacy_personal_source():
     client = build_client()
 
     response = client.get("/api/explore/overview/info?data_source=personal")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["source_meta"]["requested_source"] == "personal"
-    assert payload["source_meta"]["effective_source"] == "default"
-    assert payload["source_meta"]["fallback"] is True
+    assert response.status_code == 400
+    assert "mcd_upload_id" in response.json()["detail"]
+
+
+def test_personal_build_status_endpoint_is_retired():
+    client = build_client()
+
+    response = client.get("/api/explore/personal-build-status")
+
+    assert response.status_code == 410
+    assert "retired" in response.json()["detail"]
 
 
 def test_overview_ozone_sources_never_errors_when_nomad_is_missing():
@@ -308,6 +315,17 @@ def test_overview_correlation_excludes_dust_variable():
     assert response.status_code == 200
     payload = response.json()
     assert "Dust_Optical_Depth" not in payload["variable_names"]
+
+
+def test_overview_research_suite_excludes_unavailable_dust_trend():
+    client = build_client()
+
+    response = client.get("/api/explore/overview/research-suite?my=27")
+
+    assert response.status_code == 200
+    trends = response.json()["trend_lines"]["series"]
+    assert "dust" not in trends
+    assert set(trends) == {"o3", "temp", "solar", "wind"}
 
 
 def test_overview_ozone_sources_returns_nomad_validation_metrics(tmp_path):

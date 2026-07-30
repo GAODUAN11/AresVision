@@ -5,8 +5,11 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewCouplingData } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { correlation, roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import { movingAverageSeries } from './chartSeries';
 
-export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' }) {
+const SMOOTH_WINDOW = 21;
+
+export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
 
   const isLight = settings?.theme === 'light';
@@ -37,6 +40,9 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
     ozoneSeries: 'Ozone',
     driverSeries: 'Temperature',
   };
+  const trendNote = isZh
+    ? '浅色线为原始日尺度序列，主线为 21 点移动平均趋势；相关系数仍基于原始序列计算。'
+    : 'Faint lines are raw daily-scale series; main lines are 21-point moving averages. Correlation is still computed from the raw series.';
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +50,7 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchOverviewCouplingData(marsYear, 'o3col', 'Temperature', { dataSource: dataSourceMode })
+    fetchOverviewCouplingData(marsYear, 'o3col', 'Temperature', overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -56,7 +62,7 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!data?.var1?.length || !data?.var2?.length) return null;
@@ -66,6 +72,14 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
       driverStats: summarizeSeries(data.var2),
       ozoneSamples: sampleSeries(data.var1, data.ls || [], 10),
       driverSamples: sampleSeries(data.var2, data.ls || [], 10),
+    };
+  }, [data]);
+
+  const smoothedData = useMemo(() => {
+    if (!data?.var1?.length || !data?.var2?.length) return null;
+    return {
+      ozone: movingAverageSeries(data.var1, SMOOTH_WINDOW),
+      driver: movingAverageSeries(data.var2, SMOOTH_WINDOW),
     };
   }, [data]);
 
@@ -118,6 +132,16 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
               y: data.var1,
               type: 'scatter',
               mode: 'lines',
+              name: `${copy.ozoneSeries} raw`,
+              line: { color: 'rgba(74,158,255,0.24)', width: 1 },
+              yaxis: 'y1',
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.ozone || data.var1,
+              type: 'scatter',
+              mode: 'lines',
               name: copy.ozoneSeries,
               line: { color: C.blue, width: 3 },
               yaxis: 'y1'
@@ -125,6 +149,16 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
             {
               x: data.ls,
               y: data.var2,
+              type: 'scatter',
+              mode: 'lines',
+              name: `${copy.driverSeries} raw`,
+              line: { color: 'rgba(199,91,57,0.24)', width: 1, dash: 'dot' },
+              yaxis: 'y2',
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.driver || data.var2,
               type: 'scatter',
               mode: 'lines',
               name: copy.driverSeries,
@@ -176,6 +210,9 @@ export default function CouplingAnalysis({ marsYear, dataSourceMode = 'default' 
           useResizeHandler
           style={{ width: '100%', height: chartHeight }}
         />
+      </div>
+      <div style={{ color: C.ice60, fontSize: 'calc(11px * var(--font-scale, 1))', lineHeight: 1.6 }}>
+        {trendNote}
       </div>
     </div>
   );

@@ -21,7 +21,7 @@ function getNodeMainText(data, t, text) {
     return channel ? t(channel.labelKey) : data.label;
   }
   if (data.workflowType === WORKFLOW_NODE_TYPES.DATA_SOURCE) {
-    return data.dataSource === 'personal' ? text.source.personal : text.source.default;
+    return text.source.default;
   }
   if (data.workflowType === WORKFLOW_NODE_TYPES.MARS_CONTEXT) {
     return `MY ${data.marsYear ?? 27} · Ls ${data.lsStart ?? 90}`;

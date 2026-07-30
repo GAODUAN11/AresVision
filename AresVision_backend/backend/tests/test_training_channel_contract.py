@@ -30,7 +30,7 @@ def test_hyperparameter_args_pass_selected_channels_to_unified_script():
         "model_architecture": "predrnnv2",
         "use_sphere": True,
         "seed": 123,
-        "_data_source": "personal",
+        "_data_source": "default",
         "stlstm_hidden_dims": [32, 64],
     })
 

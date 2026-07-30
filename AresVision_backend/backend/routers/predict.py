@@ -2,11 +2,9 @@
 棰勬祴鍒嗘瀽椤?鈥?API 璺敱
 """
 
-import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
-from cachetools import LRUCache
 
 from auth.dependencies import get_optional_user
 from database.models import User
@@ -20,8 +18,6 @@ from schemas.predict import (
 )
 from config import DEFAULT_MARS_YEAR, LATITUDE_BANDS
 from services.analysis_service import AnalysisService
-from services.personal_data_source_service import SingleYearDataView
-from services.predict_data_service import PredictDataService
 from services.predict_service import PredictOrchestratorService
 
 logger = logging.getLogger(__name__)
@@ -44,21 +40,16 @@ def _get_training_inference_service(request: Request):
     return service
 
 
-def _get_personal_predict_service_cache(request: Request) -> LRUCache:
-    cache = getattr(request.app.state, "personal_predict_service_cache", None)
-    if cache is None:
-        cache = LRUCache(maxsize=16)
-        request.app.state.personal_predict_service_cache = cache
-    return cache
-
-
-def _personal_cache_key(current_user: User | None, resolution) -> tuple:
-    return (
-        int(current_user.id if current_user else 0),
-        int(resolution.mars_year),
-        str(resolution.effective_source),
-        str(getattr(resolution, "signature_hash", "") or ""),
-    )
+def _normalize_predict_source(data_source: str | None) -> str:
+    requested = (data_source or "default").strip().lower()
+    if requested == "personal":
+        raise HTTPException(
+            status_code=400,
+            detail="Personal raw uploads are only available in Data Overview; prediction uses server-managed datasets.",
+        )
+    if requested not in ("default",):
+        raise HTTPException(status_code=400, detail="data_source must be 'default'")
+    return "default"
 
 
 async def _resolve_predict_context(
@@ -67,61 +58,18 @@ async def _resolve_predict_context(
     data_source: str,
     current_user: User | None,
 ) -> tuple[PredictOrchestratorService, dict, int]:
-    requested = (data_source or "default").strip().lower()
-    if requested not in ("default", "personal"):
-        raise HTTPException(status_code=400, detail="data_source must be 'default' or 'personal'")
-
-    if requested == "default":
-        return (
-            _get_predict_service(request),
-            {
-                "requested_source": "default",
-                "effective_source": "default",
-                "fallback": False,
-                "message": None,
-                "mars_year": my,
-            },
-            my,
-        )
-
-    resolver = request.app.state.personal_data_source_service
-    resolution = await resolver.resolve_for_year("personal", my, current_user.id if current_user else None)
-    if resolution.effective_source == "default":
-        return _get_predict_service(request), resolution.source_meta(), resolution.mars_year
-
-    service_cache = _get_personal_predict_service_cache(request)
-    cache_key = _personal_cache_key(current_user, resolution)
-    cached_service = service_cache.get(cache_key)
-    if cached_service is not None:
-        logger.info(
-            "personal predict service cache hit (uid=%s, MY%s, mode=%s)",
-            current_user.id if current_user else "anon",
-            resolution.mars_year,
-            resolution.effective_source,
-        )
-        return cached_service, resolution.source_meta(), resolution.mars_year
-
-    data_view = SingleYearDataView(
-        mars_year=resolution.mars_year,
-        openmars_data=resolution.openmars_data,
-        aligned_mcd_data=resolution.aligned_mcd_data,
-        mcd_raw_data=resolution.mcd_raw_data,
+    _normalize_predict_source(data_source)
+    return (
+        _get_predict_service(request),
+        {
+            "requested_source": "default",
+            "effective_source": "default",
+            "fallback": False,
+            "message": None,
+            "mars_year": my,
+        },
+        my,
     )
-    personal_prep = PredictDataService(data_view, use_processed_tensor=False)
-    personal_service = PredictOrchestratorService(
-        data_service=data_view,
-        ml_data_prep=personal_prep,
-        transforms=request.app.state.predict_transforms,
-        inference=request.app.state.predict_inference,
-    )
-    service_cache[cache_key] = personal_service
-    logger.info(
-        "personal predict service cache miss -> create (uid=%s, MY%s, mode=%s)",
-        current_user.id if current_user else "anon",
-        resolution.mars_year,
-        resolution.effective_source,
-    )
-    return personal_service, resolution.source_meta(), resolution.mars_year
 
 
 async def _resolve_diurnal_context(
@@ -130,35 +78,18 @@ async def _resolve_diurnal_context(
     data_source: str,
     current_user: User | None,
 ) -> tuple[AnalysisService, dict, int]:
-    requested = (data_source or "default").strip().lower()
-    if requested not in ("default", "personal"):
-        raise HTTPException(status_code=400, detail="data_source must be 'default' or 'personal'")
-
-    if requested == "default":
-        return (
-            _get_analysis_service(request),
-            {
-                "requested_source": "default",
-                "effective_source": "default",
-                "fallback": False,
-                "message": None,
-                "mars_year": my,
-            },
-            my,
-        )
-
-    resolver = request.app.state.personal_data_source_service
-    resolution = await resolver.resolve_for_year("personal", my, current_user.id if current_user else None)
-    if resolution.effective_source == "default":
-        return _get_analysis_service(request), resolution.source_meta(), resolution.mars_year
-
-    data_view = SingleYearDataView(
-        mars_year=resolution.mars_year,
-        openmars_data=resolution.openmars_data,
-        aligned_mcd_data=resolution.aligned_mcd_data,
-        mcd_raw_data=resolution.mcd_raw_data,
+    _normalize_predict_source(data_source)
+    return (
+        _get_analysis_service(request),
+        {
+            "requested_source": "default",
+            "effective_source": "default",
+            "fallback": False,
+            "message": None,
+            "mars_year": my,
+        },
+        my,
     )
-    return AnalysisService(data_view), resolution.source_meta(), resolution.mars_year
 
 
 # 鈹€鈹€鈹€ 鏍稿績棰勬祴鎺ュ彛 鈹€鈹€鈹€
@@ -167,7 +98,7 @@ async def _resolve_diurnal_context(
 async def run_prediction(
     request: Request,
     body: PredictRequest = Body(...),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
     """
@@ -240,7 +171,7 @@ async def run_prediction(
 async def get_eval_metrics(
     request: Request,
     body: PredictRequest = Body(...),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
     """鑾峰彇棰勬祴璇勪及鎸囨爣锛圧MSE, MAE, SSIM, R虏锛?"""
@@ -359,52 +290,25 @@ async def compare_training_model_pfi(
 
 
 @router.post("/prewarm")
-async def prewarm_personal_source(
+async def prewarm_predict_source(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR),
-    data_source: str = Query("personal", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
-    """
-    Prewarm predict data path for the requested source/year.
-    Used by frontend after login to reduce first interactive switch latency.
-    """
     try:
-        requested = (data_source or "default").strip().lower()
-        if requested == "personal" and current_user is not None:
-            enqueue = getattr(request.app.state, "enqueue_personal_cache_rebuild", None)
-            if callable(enqueue):
-                enqueue(current_user.id)
-            else:
-                resolver = request.app.state.personal_data_source_service
-                asyncio.create_task(resolver.build_user_cache(current_user.id))
-            return {
-                "ok": True,
-                "queued": True,
-                "warmed": False,
-                "mars_year": my,
-                "source_meta": {
-                    "requested_source": "personal",
-                    "effective_source": "personal",
-                    "fallback": False,
-                    "message": "personal cache rebuild queued",
-                },
-            }
-
+        requested = _normalize_predict_source(data_source)
         ps, source_meta, resolved_year = await _resolve_predict_context(
-            request, my, data_source, current_user
+            request, my, requested, current_user
         )
         warmed = False
         ml_data_prep = getattr(ps, "ml_data_prep", None)
         if ml_data_prep is not None and hasattr(ml_data_prep, "prewarm_for_year"):
             ml_data_prep.prewarm_for_year(resolved_year)
             warmed = True
-        return {
-            "ok": True,
-            "warmed": warmed,
-            "mars_year": resolved_year,
-            "source_meta": source_meta,
-        }
+        return {"ok": True, "warmed": warmed, "mars_year": resolved_year, "source_meta": source_meta}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"prewarm failed: {e}")
 
@@ -416,7 +320,7 @@ async def get_ablation_results(
     request: Request,
     my: int = Query(DEFAULT_MARS_YEAR),
     ls: float = Query(90.0, ge=0, le=360),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
     """
@@ -439,7 +343,7 @@ async def get_ablation_results(
 async def get_performance_results(
     request: Request,
     body: PredictRequest = Body(...),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
     """
@@ -471,7 +375,7 @@ async def get_performance_comparison(
     request: Request,
     body: PerformanceCompareRequest = Body(...),
     my: int = Query(DEFAULT_MARS_YEAR),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
     """鍚屾椂鑾峰彇澶氫釜鍙橀噺缁勫悎鐨勬ā鍨嬫€ц兘鏇茬嚎浠ヤ究瀵规瘮鍒嗘瀽"""
@@ -525,7 +429,7 @@ async def get_diurnal_data(
     my: int = Query(DEFAULT_MARS_YEAR),
     ls: float = Query(90.0, ge=0, le=360),
     lat_band: str = Query("Equatorial (30S-30N)", description="纬度带名称"),
-    data_source: str = Query("default", description="default | personal"),
+    data_source: str = Query("default", description="default"),
     current_user: User | None = Depends(get_optional_user),
 ):
     """获取指定纬度带的臭氧昼夜变化曲线"""

@@ -178,7 +178,7 @@ test('compiles prediction workflow from external workflow configuration without 
     lsStart: 177.25,
   });
 
-  assert.equal(compiled.dataSource, 'personal');
+  assert.equal(compiled.dataSource, 'default');
   assert.equal(compiled.marsYear, 29);
   assert.equal(compiled.lsStart, 177.25);
   assert.deepEqual(compiled.body, {
@@ -219,7 +219,7 @@ test('compiles training draft from external training configuration without a tra
     },
   }, ['demo3.py']);
 
-  assert.equal(draft.dataSource, 'personal');
+  assert.equal(draft.dataSource, 'default');
   assert.deepEqual(draft.selectedChannels, ['U', 'V']);
   assert.deepEqual(draft.hyperparameters, {
     epochs: 9,

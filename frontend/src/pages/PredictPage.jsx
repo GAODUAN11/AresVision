@@ -4,7 +4,6 @@ import C from '../constants/colors';
 import { useT } from '../i18n';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useToast } from '../contexts/ToastContext';
 import SectionTitle from '../components/SectionTitle';
 
 import {
@@ -20,13 +19,6 @@ import {
   compareTrainingModelPfi,
   compareTrainingModels,
 } from '../services/api';
-import {
-  getPersonalSourceAvailability,
-  getPersonalSourceBlockedMessage,
-  getPersonalSourceCheckFailedMessage,
-  getPersonalSourceLoginRequiredMessage,
-  isPersonalSourceInsufficient,
-} from '../utils/personalSourceGuard';
 
 import { VARIABLE_DEFS, VIEW_MODE_IDS, TRIPTYCH_PANEL_DEFS } from './PredictPage/PredictComponents';
 import PredictSidebar from './PredictPage/PredictSidebar';
@@ -69,8 +61,6 @@ const SHORTHAND_MAP = {
   V_Wind: 'V',
 };
 
-const PERSONAL_BOUNCE_MS = 720;
-
 const getShorthands = (vars) => {
   if (!vars || vars.length === 0) return 'baseline';
   return vars.map((v) => SHORTHAND_MAP[v] || v[0]).sort().join('');
@@ -80,7 +70,6 @@ export default function PredictPage() {
   const t = useT();
   const { settings } = useSettings();
   const { user, isLoading } = useAuth();
-  const { showToast } = useToast();
   const precision = settings.precision;
   const ozoneUnit = settings.units.ozone;
   const isLight = settings.theme === 'light';
@@ -99,15 +88,13 @@ export default function PredictPage() {
   const [predStep, setPredStep] = useState(_c.params?.predStep ?? 3);
   const [lsStart, setLsStart] = useState(_c.params?.lsStart ?? 90);
   const [marsYear, setMarsYear] = useState(_c.params?.marsYear ?? 27);
-  const [dataSourceMode, setDataSourceMode] = useState(_c.params?.dataSource ?? 'default');
+  const dataSourceMode = 'default';
   const [modelMode, setModelMode] = useState(normalizePredictModelMode(_c.params?.modelMode));
   const [trainingTasks, setTrainingTasks] = useState([]);
   const [trainingTasksLoading, setTrainingTasksLoading] = useState(false);
   const [trainingTasksLoaded, setTrainingTasksLoaded] = useState(false);
   const [selectedTrainingTaskId, setSelectedTrainingTaskId] = useState(_c.params?.trainingTaskId ?? null);
   const [selectedCompareTrainingTaskIds, setSelectedCompareTrainingTaskIds] = useState(_c.selectedCompareTrainingTaskIds ?? []);
-  const [switchPreviewMode, setSwitchPreviewMode] = useState(null);
-  const [sourceMeta, setSourceMeta] = useState(null);
   const [availableMarsYears, setAvailableMarsYears] = useState([27, 28]);
   const [activeHorizon, setActiveHorizon] = useState(_c.activeHorizon);
   const [viewMode, setViewMode] = useState(_c.viewMode);
@@ -201,12 +188,6 @@ export default function PredictPage() {
   };
 
   useEffect(() => {
-    if (!isLoading && !user && dataSourceMode === 'personal') {
-      setDataSourceMode('default');
-    }
-  }, [dataSourceMode, isLoading, user]);
-
-  useEffect(() => {
     const handoff = parseTrainingTaskHandoff(sessionStorage.getItem(TRAINING_TASK_HANDOFF_KEY));
     if (!handoff) return;
 
@@ -263,29 +244,21 @@ export default function PredictPage() {
   }, [modelMode, selectedTrainingOption, trainingModelOptions, trainingTasksLoaded, trainingTasksLoading]);
 
   useEffect(() => {
-    if (switchPreviewMode && dataSourceMode !== switchPreviewMode) {
-      setSwitchPreviewMode(null);
-    }
-  }, [dataSourceMode, switchPreviewMode]);
-
-  useEffect(() => {
     let active = true;
     setIsSwitchingSource(true);
 
-    fetchDataInfo({ dataSource: dataSourceMode })
+    fetchDataInfo({ dataSource: 'default' })
       .then((info) => {
         if (!active) return;
         const years = Array.isArray(info?.available_years) && info.available_years.length > 0
           ? info.available_years
           : [27, 28];
         setAvailableMarsYears(years);
-        setSourceMeta(info?.source_meta || null);
         setMarsYear((prev) => (years.includes(prev) ? prev : years[0]));
       })
       .catch(() => {
         if (!active) return;
         setAvailableMarsYears([27, 28]);
-        setSourceMeta(null);
       })
       .finally(() => {
         if (!active) return;
@@ -295,45 +268,7 @@ export default function PredictPage() {
     return () => {
       active = false;
     };
-  }, [dataSourceMode, user?.id]);
-
-  const handleDataSourceModeChange = useCallback(async (nextMode) => {
-    if (isSwitchingSource || nextMode === dataSourceMode) return;
-    if (nextMode !== 'personal') {
-      setSwitchPreviewMode(null);
-      setDataSourceMode(nextMode);
-      return;
-    }
-    if (!user) {
-      showToast(getPersonalSourceLoginRequiredMessage(settings?.language !== 'en'), 'error');
-      return;
-    }
-
-    try {
-      setIsSwitchingSource(true);
-      const { blocked } = await getPersonalSourceAvailability();
-      if (blocked) {
-        showToast(getPersonalSourceBlockedMessage(settings?.language !== 'en'), 'error');
-        setIsSwitchingSource(false);
-        return;
-      }
-      const info = await fetchDataInfo({ dataSource: 'personal' });
-      if (isPersonalSourceInsufficient(info?.source_meta)) {
-        setSwitchPreviewMode('personal');
-        window.setTimeout(() => {
-          setSwitchPreviewMode(null);
-        }, PERSONAL_BOUNCE_MS);
-        showToast(info?.source_meta?.message || getPersonalSourceCheckFailedMessage(settings?.language !== 'en'), 'error');
-        setIsSwitchingSource(false);
-        return;
-      }
-      setSwitchPreviewMode(null);
-      setDataSourceMode('personal');
-    } catch {
-      showToast(getPersonalSourceCheckFailedMessage(settings?.language !== 'en'), 'error');
-      setIsSwitchingSource(false);
-    }
-  }, [dataSourceMode, isSwitchingSource, settings?.language, showToast, user]);
+  }, [user?.id]);
 
   const handlePredict = useCallback(async () => {
     if (isSwitchingSource) return;
@@ -443,9 +378,7 @@ export default function PredictPage() {
               trainingTaskId,
               horizon: predStep,
             })
-          : dataSourceMode === 'personal'
-            ? Promise.resolve(null)
-            : fetchErrorDistribution(selectedVars)
+          : fetchErrorDistribution(selectedVars)
         : Promise.resolve(null);
       const pfiVariables = modelMode === PREDICT_MODEL_MODE_TRAINED
         ? (predResult.selected_variables || [])
@@ -705,11 +638,6 @@ export default function PredictPage() {
           trainingTasksLoading={trainingTasksLoading}
           selectedTrainingOption={selectedTrainingOption}
           analysisVisibility={analysisVisibility}
-          dataSourceMode={switchPreviewMode || dataSourceMode}
-          setDataSourceMode={handleDataSourceModeChange}
-          sourceMeta={sourceMeta}
-          personalSourceDisabled={!user}
-          personalSourceHint={!user ? getPersonalSourceLoginRequiredMessage(settings?.language !== 'en') : ''}
           marsYear={marsYear}
           setMarsYear={setMarsYear}
           availableMarsYears={availableMarsYears}

@@ -5,8 +5,11 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewPolarDynamics } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import { movingAverageSeries } from './chartSeries';
 
-export default function PolarDynamics({ marsYear, dataSourceMode = 'default' }) {
+const SMOOTH_WINDOW = 21;
+
+export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
 
   const isLight = settings?.theme === 'light';
@@ -47,7 +50,7 @@ export default function PolarDynamics({ marsYear, dataSourceMode = 'default' }) 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchOverviewPolarDynamics(marsYear, { dataSource: dataSourceMode })
+    fetchOverviewPolarDynamics(marsYear, overviewSourceParams)
       .then((res) => {
         if (active) {
           setData(res);
@@ -59,7 +62,7 @@ export default function PolarDynamics({ marsYear, dataSourceMode = 'default' }) 
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [marsYear, dataSourceMode]);
+  }, [marsYear, overviewSourceParams]);
 
   const diagnostics = useMemo(() => {
     if (!data?.ls?.length) return null;
@@ -92,6 +95,16 @@ export default function PolarDynamics({ marsYear, dataSourceMode = 'default' }) 
       southOzonePeak: findPeak(southOzone),
       northOzoneSamples: sampleSeries(northOzone, data.ls, 8),
       southOzoneSamples: sampleSeries(southOzone, data.ls, 8),
+    };
+  }, [data]);
+
+  const smoothedData = useMemo(() => {
+    if (!data?.ls?.length) return null;
+    return {
+      northOzone: movingAverageSeries(data?.north?.ozone || [], SMOOTH_WINDOW),
+      southOzone: movingAverageSeries(data?.south?.ozone || [], SMOOTH_WINDOW),
+      northTemp: movingAverageSeries(data?.north?.temp || [], SMOOTH_WINDOW),
+      southTemp: movingAverageSeries(data?.south?.temp || [], SMOOTH_WINDOW),
     };
   }, [data]);
 
@@ -145,12 +158,30 @@ export default function PolarDynamics({ marsYear, dataSourceMode = 'default' }) 
               y: data.north.ozone,
               type: 'scatter',
               mode: 'lines',
+              name: `${copy.northOzone} raw`,
+              line: { color: 'rgba(74,158,255,0.22)', width: 1 },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.northOzone || data.north.ozone,
+              type: 'scatter',
+              mode: 'lines',
               name: copy.northOzone,
               line: { color: C.blue, width: 2.5 }
             },
             {
               x: data.ls,
               y: data.south.ozone,
+              type: 'scatter',
+              mode: 'lines',
+              name: `${copy.southOzone} raw`,
+              line: { color: 'rgba(199,91,57,0.22)', width: 1, dash: 'dot' },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.southOzone || data.south.ozone,
               type: 'scatter',
               mode: 'lines',
               name: copy.southOzone,
@@ -194,12 +225,30 @@ export default function PolarDynamics({ marsYear, dataSourceMode = 'default' }) 
               y: data.north.temp,
               type: 'scatter',
               mode: 'lines',
+              name: `${copy.northTemp} raw`,
+              line: { color: 'rgba(0,210,255,0.20)', width: 1 },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.northTemp || data.north.temp,
+              type: 'scatter',
+              mode: 'lines',
               name: copy.northTemp,
               line: { color: '#00d2ff', width: 1.5 }
             },
             {
               x: data.ls,
               y: data.south.temp,
+              type: 'scatter',
+              mode: 'lines',
+              name: `${copy.southTemp} raw`,
+              line: { color: 'rgba(255,123,0,0.20)', width: 1, dash: 'dot' },
+              showlegend: false,
+            },
+            {
+              x: data.ls,
+              y: smoothedData?.southTemp || data.south.temp,
               type: 'scatter',
               mode: 'lines',
               name: copy.southTemp,

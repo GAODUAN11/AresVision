@@ -59,14 +59,13 @@ export default function TopStatusBar() {
 
   const sourceLabel = (() => {
     const mode = sourceMeta?.effective_source;
-    if (mode === 'personal_full_year') return isZh ? '个人数据' : 'Personal';
-    if (mode === 'personal_mcd_plus_system_openmars') return isZh ? '混合数据' : 'Hybrid';
-    return isZh ? '系统默认' : 'Default';
+    if (mode === 'user_mcd') {
+      return sourceMeta?.upload_filename || (isZh ? '上传 MCD' : 'Uploaded MCD');
+    }
+    return isZh ? '官方默认 MCD' : 'Official MCD';
   })();
 
-  const isEffectivePersonal =
-    sourceMeta?.effective_source === 'personal_full_year' ||
-    sourceMeta?.effective_source === 'personal_mcd_plus_system_openmars';
+  const isUserMcd = sourceMeta?.effective_source === 'user_mcd';
 
   const focusValue = selectedCoordinate
     ? `${selectedCoordinate.lat.toFixed(1)}°, ${selectedCoordinate.lng.toFixed(1)}°`
@@ -158,7 +157,7 @@ export default function TopStatusBar() {
         <StatusItem
           label={isZh ? '数据源' : 'Source'}
           value={sourceLabel}
-          valueColor={isEffectivePersonal ? C.blue : C.ice}
+          valueColor={isUserMcd ? C.blue : C.ice}
         />
       </div>
     </div>

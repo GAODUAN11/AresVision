@@ -125,8 +125,7 @@ export function buildTrainedModelParameterItems(task, { isZh = true } = {}) {
         seed: '随机种子',
         official: '官方',
         uploaded: '上传',
-        defaultData: '默认数据',
-        personalData: '个人数据',
+        defaultData: '服务器托管数据',
         on: '开启',
         off: '关闭',
       }
@@ -147,14 +146,12 @@ export function buildTrainedModelParameterItems(task, { isZh = true } = {}) {
         seed: 'Seed',
         official: 'Official',
         uploaded: 'Uploaded',
-        defaultData: 'Default data',
-        personalData: 'Personal data',
+        defaultData: 'Server-managed data',
         on: 'On',
         off: 'Off',
       };
 
   const modelSource = String(hypers.model_source || task.model_source || 'official').toLowerCase();
-  const dataSource = String(hypers._effective_data_source || hypers._data_source || 'default').toLowerCase();
   const channels = Array.isArray(hypers.selected_channels)
     ? hypers.selected_channels.map((channel) => CHANNEL_LABELS[String(channel).toUpperCase()] || String(channel).toUpperCase())
     : [];
@@ -162,7 +159,7 @@ export function buildTrainedModelParameterItems(task, { isZh = true } = {}) {
 
   addItem(items, labels.modelName, task.custom_model_name || `Task #${task.id}`);
   addItem(items, labels.taskId, task.id ? `#${task.id}` : null);
-  addItem(items, labels.source, dataSource === 'personal' ? labels.personalData : labels.defaultData);
+  addItem(items, labels.source, labels.defaultData);
   addItem(items, labels.modelType, modelSource === 'uploaded' ? labels.uploaded : labels.official);
   addItem(items, labels.architecture, getArchitectureLabel(hypers.model_architecture));
   addItem(items, labels.sphere, hypers.use_sphere ? labels.on : labels.off);

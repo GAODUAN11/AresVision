@@ -9,6 +9,7 @@
   2. 审核通过数据：approved/{record_id}/original.nc
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,7 @@ from config import (
 )
 from database.engine import async_session_maker
 from database.models import UploadRecord
+from services.overview_upload_contract import normalize_overview_upload_dataset
 
 logger = logging.getLogger("aresvision.user_data")
 
@@ -97,70 +99,13 @@ class UserDataService:
 
     def _load_nc_file(self, file_path: str) -> dict:
         """
-        读取一个 .nc 文件，返回标准化的数据字典。
-        自动检测数据类型（openmars / mcd / unknown）。
+        读取一个 .nc 文件，返回数据总览可直接消费的标准化数据字典。
         """
         ds = xr.open_dataset(file_path, decode_times=False)
-
-        # 坐标
-        lat = (
-            ds["lat"].values if "lat" in ds
-            else ds["latitude"].values if "latitude" in ds
-            else None
-        )
-        lon = (
-            ds["lon"].values if "lon" in ds
-            else ds["longitude"].values if "longitude" in ds
-            else None
-        )
-
-        # Ls / 时间轴
-        ls = None
-        for ls_name in ("Ls", "ls", "L_s", "solar_longitude"):
-            if ls_name in ds:
-                ls = ds[ls_name].values
-                break
-            if ls_name in ds.coords:
-                ls = ds.coords[ls_name].values
-                break
-
-        # 数据类型检测
-        is_openmars = "o3col" in ds
-        mcd_vars_found = [v for v in MCD_VARIABLES if v in ds]
-        data_type = (
-            "openmars" if is_openmars
-            else "mcd" if len(mcd_vars_found) >= 2
-            else "unknown"
-        )
-
-        result: dict = {
-            "lat": lat,
-            "lon": lon,
-            "ls": ls,
-            "data_type": data_type,
-        }
-
-        # 臭氧数据
-        if is_openmars:
-            o3 = ds["o3col"].values
-            if o3.ndim == 4:
-                o3 = np.nanmean(o3, axis=1)  # 平均掉 level 维度
-            if ls is not None:
-                sort_idx = np.argsort(ls)
-                ls = ls[sort_idx]
-                o3 = o3[sort_idx]
-                result["ls"] = ls
-            result["o3col"] = o3
-
-        # MCD 变量
-        for var in mcd_vars_found:
-            arr = ds[var].values
-            if arr.ndim == 4:
-                arr = np.nanmean(arr, axis=1)
-            result[var] = arr
-
-        ds.close()
-        return result
+        try:
+            return normalize_overview_upload_dataset(ds, filename=Path(file_path).name)
+        finally:
+            ds.close()
 
     async def _get_data(self, upload_id: int) -> dict:
         """获取（并缓存）指定 upload_id 的解析数据"""
@@ -169,10 +114,14 @@ class UserDataService:
             file_path = await self._get_file_path(upload_id)
             if not file_path:
                 raise ValueError(f"找不到上传记录 {upload_id} 的数据文件")
-            self._cache[cache_key] = self._load_nc_file(file_path)
+            self._cache[cache_key] = await asyncio.to_thread(self._load_nc_file, file_path)
         return self._cache[cache_key]
 
     # ─── 公共接口 ──────────────────────────────────────────────────────────────
+
+    async def get_loaded_dataset(self, upload_id: int) -> dict:
+        """Return the cached parsed payload for a raw uploaded dataset."""
+        return await self._get_data(upload_id)
 
     async def get_dataset_summary(self, upload_id: int) -> dict:
         """获取数据集的基本信息摘要"""

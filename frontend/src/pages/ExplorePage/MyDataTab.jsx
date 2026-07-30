@@ -8,11 +8,8 @@ import GlowCard from '../../components/GlowCard';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ContributeModal from '../../components/ContributeModal';
 import ContributeHistoryPanel from '../../components/ContributeHistoryPanel';
-import PersonalSourceWarmupBar from '../../components/PersonalSourceWarmupBar';
 import {
   deleteUpload,
-  fetchDataInfo,
-  fetchPersonalBuildStatus,
   fetchUserBands,
   fetchUserDataSummary,
   fetchUserGlobeData,
@@ -23,15 +20,14 @@ import HeatmapCanvas from './HeatmapCanvas';
 import LineChart from './LineChart';
 import GlobePlot from './GlobePlot';
 import { LoadingBox } from './ExploreComponents';
-
-const ACTIVE_UPLOAD_STATUSES = new Set(['valid', 'pending_review', 'approved', 'rejected']);
+import { getRawDatasetUsage } from './rawDatasetUsage';
 
 function createCopy(isZh) {
   return {
-    myHubTitle: isZh ? '个人数据接入与贡献工作台' : 'Personal Ingestion & Contribution Workbench',
+    myHubTitle: isZh ? '数据总览原始数据集工作台' : 'Data Overview Raw Dataset Workbench',
     myHubDesc: isZh
-      ? '把上传文件变成真正可被站内页面使用的个人数据源，并在准备好时进入平台贡献流程。页面按真实任务拆成总览、数据队列和详情预览三层，避免把所有状态堆在一起。'
-      : 'Turn uploads into a usable personal data source, then move ready datasets into platform contribution. The page is organized as overview, dataset queue, and detail preview instead of one overloaded canvas.',
+      ? '这里管理用户上传的 MCD / OpenMARS / NOMAD 原始数据，并统一校验为数据总览可消费格式。MCD 可作为数据总览整页数据源；OpenMARS 与 NOMAD 仅用于三维臭氧多源展示。训练与预测数据由服务器后台管理。'
+      : 'Manage uploaded MCD / OpenMARS / NOMAD raw datasets and validate them into Data Overview-ready formats. MCD can drive Data Overview; OpenMARS and NOMAD are only 3D ozone sources. Training and prediction data are server-managed.',
     contributionTitle: isZh ? '平台贡献流程' : 'Platform Contribution Flow',
     contributionDesc: isZh
       ? '只有通过基础校验并保持可管理状态的数据，才适合进入公共贡献。提交后会先进入管理员审核，而不会直接并入官方资产。'
@@ -39,41 +35,41 @@ function createCopy(isZh) {
     contributionOpen: isZh ? '打开贡献流程' : 'Open Contribution Flow',
     contributionHistory: isZh ? '查看贡献记录' : 'View Contribution History',
     contributionNone: isZh ? '当前没有可提交贡献的数据集。' : 'No datasets are currently eligible for contribution.',
-    canUseTitle: isZh ? '分析使用条件' : 'Analysis Usage Conditions',
+    canUseTitle: isZh ? '数据总览使用条件' : 'Data Overview Usage',
     canUseDesc: isZh
-      ? '能否被数据概览、分析、预测和训练页面真正当作个人数据源调用。'
-      : 'Whether overview, analysis, prediction, and training pages can truly consume it through the Personal source path.',
+      ? '判断该原始数据是否通过总览字段、Ls 与 5° 网格校验。普通用户上传数据不再参与训练或预测。'
+      : 'Whether this raw dataset passes the overview field, Ls, and 5° grid checks. User uploads no longer feed training or prediction.',
     canContributeTitle: isZh ? '公共贡献条件' : 'Contribution Conditions',
     canContributeDesc: isZh
       ? '是否适合进入平台审核流程，争取成为平台公共数据资产。'
       : 'Whether it is suitable to enter the platform review flow and potentially become a shared platform asset.',
     lifeCycleTitle: isZh ? '生命周期状态' : 'Lifecycle Status',
-    sourceModeTitle: isZh ? '进入的数据源模式' : 'Source Mode',
+    sourceModeTitle: isZh ? '数据总览用途' : 'Overview Role',
     sourceModeDesc: isZh
-      ? '当其他页面切换到个人模式时，系统最终会使用哪一种数据源组合。'
-      : 'What source combination the system ultimately uses when other pages switch to Personal mode.',
+      ? 'MCD 用于整页数据总览；OpenMARS / NOMAD 仅用于 3D 臭氧多源图层。三类数据都会先标准化到总览使用的字段命名。'
+      : 'MCD drives the full overview page; OpenMARS / NOMAD are only 3D ozone layers. All three are normalized to the field names consumed by Overview.',
     ruleValid: isZh ? '上传校验通过' : 'Upload validation passed',
-    ruleBuildReady: isZh ? '个人数据源构建完成' : 'Personal source build is ready',
-    ruleAdopted: isZh ? '已进入个人或混合数据源' : 'Actually adopted into personal or mixed source',
-    ruleRejected: isZh ? '个人使用链路稳定可用' : 'Stable for personal use',
+    ruleBuildReady: isZh ? '文件状态可用于数据总览' : 'Upload status is usable for Data Overview',
+    ruleAdopted: isZh ? '数据类型与字段契约属于 MCD / OpenMARS / NOMAD' : 'Type and field contract are MCD / OpenMARS / NOMAD',
+    ruleRejected: isZh ? '用途限定在数据总览，不进入训练或预测' : 'Scoped to Data Overview, not training or prediction',
     ruleContributeBase: isZh ? '状态仍为 valid，可提交审核' : 'Status is still valid and can be submitted',
     ruleContributePending: isZh ? '已进入管理员审核队列' : 'Already in admin review queue',
     ruleContributeApproved: isZh ? '已并入平台官方数据资产' : 'Already merged into official platform assets',
     ruleContributeRejected: isZh ? '被驳回后需重新整理再上传' : 'Rejected datasets need a new upload and fix cycle',
     lifecycleUploading: isZh ? '上传后等待系统处理' : 'Uploaded and waiting for system processing',
-    lifecycleBuilding: isZh ? '系统正在构建个人数据源' : 'System is building the personal source',
-    lifecycleReady: isZh ? '已进入个人使用链路' : 'Connected to the personal usage path',
+    lifecycleBuilding: isZh ? '等待系统完成基础处理' : 'Waiting for base processing',
+    lifecycleReady: isZh ? '可用于数据总览可视化' : 'Usable in Data Overview visualization',
     lifecyclePending: isZh ? '已提交平台审核' : 'Submitted for admin review',
     lifecycleApproved: isZh ? '已并入平台官方资产' : 'Merged into official platform assets',
     lifecycleRejected: isZh ? '审核未通过' : 'Rejected in review',
     lifecycleInvalid: isZh ? '基础校验未通过' : 'Failed base validation',
-    lifecycleFallback: isZh ? '已上传但未进入生效使用路径' : 'Uploaded but not in the active source path',
+    lifecycleFallback: isZh ? '已上传但暂不可用于数据总览' : 'Uploaded but not currently usable in Data Overview',
     overviewTitle: isZh ? '当前工作重点' : 'Operational Focus',
     overviewDesc: isZh
       ? '先确认哪些数据已接入可用，哪些还在处理中，哪些值得送审，再进入单条数据的处理。'
       : 'Confirm what is already usable, what is still processing, and what is ready for review before working on a specific file.',
     filterAll: isZh ? '全部数据' : 'All datasets',
-    filterUsable: isZh ? '已接入使用' : 'In use',
+    filterUsable: isZh ? '可用于总览' : 'Overview usable',
     filterAttention: isZh ? '需要关注' : 'Needs attention',
     filterContribution: isZh ? '贡献流程' : 'Contribution flow',
     searchPlaceholder: isZh ? '按文件名、类型或火星年搜索' : 'Search by filename, type, or Mars year',
@@ -90,7 +86,7 @@ function createCopy(isZh) {
       : 'Choose a record from the dataset queue to see its ingestion status, available actions, and content preview in one place.',
     uploadStatusTitle: isZh ? '上传状态' : 'Upload Status',
     accessTitle: isZh ? '可用页面' : 'Available In',
-    accessEmpty: isZh ? '当前还没有进入下游页面使用链路。' : 'This dataset is not currently in the downstream usage path.',
+    accessEmpty: isZh ? '当前不能在数据总览中选择使用。' : 'This dataset cannot currently be selected in Data Overview.',
     contributionReadyStat: isZh ? '可送审' : 'Ready to submit',
     contributionReadyDesc: isZh ? '满足基础校验并可进入平台贡献的数据。' : 'Datasets that passed base validation and can enter platform contribution.',
     reviewQueueStat: isZh ? '审核中' : 'In review',
@@ -98,8 +94,8 @@ function createCopy(isZh) {
     approvedStat: isZh ? '已并入' : 'Approved',
     approvedDesc: isZh ? '已经进入平台官方数据资产层的数据。' : 'Datasets already merged into official platform assets.',
     buildPendingStat: isZh ? '处理中' : 'Building',
-    buildPendingDesc: isZh ? '后台仍在构建个人数据源或等待系统处理的数据。' : 'Datasets still building into the personal source or awaiting processing.',
-    readySignal: isZh ? '当前可直接用于个人模式' : 'Ready for Personal mode now',
+    buildPendingDesc: isZh ? '后台仍在校验或等待系统处理的数据。' : 'Datasets still validating or awaiting processing.',
+    readySignal: isZh ? '可在数据总览中选择使用' : 'Ready for Data Overview selection',
     attentionSignal: isZh ? '建议优先关注这条数据的状态' : 'This item likely needs attention first',
     contributionSignal: isZh ? '满足公共贡献基础条件' : 'Eligible for public contribution',
     reviewSignalLabel: isZh ? '已进入平台审核流程' : 'Already in platform review',
@@ -291,66 +287,6 @@ function EmptyState({ icon, title, desc }) {
   );
 }
 
-function getBuildStatusKey(personalInfo) {
-  const raw = personalInfo?.source_meta?.build_status;
-  if (raw) return raw;
-  if (personalInfo?.source_meta?.effective_source === 'personal_available') return 'ready';
-  return 'idle';
-}
-
-function getBuildStatusMeta(status, t) {
-  const map = {
-    idle: {
-      label: t('explore.myData.buildStatus.idle'),
-      color: C.ice30,
-      bg: 'rgba(255,255,255,0.05)',
-    },
-    building: {
-      label: t('explore.myData.buildStatus.building'),
-      color: '#f59e0b',
-      bg: 'rgba(245,158,11,0.1)',
-    },
-    ready: {
-      label: t('explore.myData.buildStatus.ready'),
-      color: C.green,
-      bg: 'rgba(74,207,172,0.1)',
-    },
-    failed: {
-      label: t('explore.myData.buildStatus.failed'),
-      color: C.mars,
-      bg: 'rgba(199,91,57,0.1)',
-    },
-  };
-  return map[status] || map.idle;
-}
-
-function getEffectiveSourceLabel(sourceMeta, t) {
-  const effectiveSource = sourceMeta?.effective_source;
-  if (effectiveSource === 'personal_available') return t('explore.myData.effectiveSource.personal');
-  return t('explore.myData.effectiveSource.default');
-}
-
-function getYearModeMeta(rawMode, t) {
-  const map = {
-    personal_full_year: {
-      label: t('explore.myData.yearMode.personal_full_year'),
-      color: C.green,
-      bg: 'rgba(74,207,172,0.1)',
-    },
-    personal_mcd_plus_system_openmars: {
-      label: t('explore.myData.yearMode.personal_mcd_plus_system_openmars'),
-      color: C.blue,
-      bg: 'rgba(74,158,255,0.1)',
-    },
-    default: {
-      label: t('explore.myData.yearMode.default'),
-      color: C.ice30,
-      bg: 'rgba(255,255,255,0.05)',
-    },
-  };
-  return map[rawMode] || map.default;
-}
-
 function getUploadStatusMeta(status, t) {
   const palette = {
     valid: { color: C.blue, bg: 'rgba(74,158,255,0.1)' },
@@ -370,157 +306,45 @@ function normalizeType(type) {
   return String(type || '').trim().toLowerCase();
 }
 
-function deriveDatasetState(upload, personalInfo, buildStatus, t) {
-  const yearKey = upload?.mars_year != null ? `MY${upload.mars_year}` : null;
-  const detail = yearKey ? personalInfo?.details?.[yearKey] : null;
-  const rawMode = detail?.source_mode || 'default';
+function getOverviewRoleMeta(datasetUsage, isZh) {
+  if (datasetUsage.key === 'overview_mcd') {
+    return { label: isZh ? '整页 MCD' : 'Full-page MCD', color: C.green, bg: 'rgba(74,207,172,0.1)' };
+  }
+  if (datasetUsage.key === 'ozone_openmars') {
+    return { label: '3D OpenMARS', color: C.blue, bg: 'rgba(74,158,255,0.1)' };
+  }
+  if (datasetUsage.key === 'ozone_nomad') {
+    return { label: '3D NOMAD', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' };
+  }
+  return { label: isZh ? '未进入总览' : 'Not in overview', color: C.ice30, bg: 'rgba(255,255,255,0.05)' };
+}
+
+function deriveDatasetState(upload, isZh) {
+  const datasetUsage = getRawDatasetUsage(upload, isZh);
   const type = normalizeType(upload?.data_type);
-
-  if (!upload) {
-    return {
-      key: 'inactive',
-      usable: false,
-      label: t('explore.myData.datasetState.inactive'),
-      desc: t('explore.myData.datasetStateDesc.inactive'),
-      color: C.ice30,
-      bg: 'rgba(255,255,255,0.05)',
-      modeMeta: getYearModeMeta(rawMode, t),
-      usagePages: [],
-    };
-  }
-
-  if (upload.status === 'invalid') {
-    return {
-      key: 'invalid',
-      usable: false,
-      label: t('explore.myData.datasetState.invalid'),
-      desc: upload.validation_message || t('explore.myData.datasetStateDesc.invalid'),
-      color: C.mars,
-      bg: 'rgba(199,91,57,0.1)',
-      modeMeta: getYearModeMeta(rawMode, t),
-      usagePages: [],
-    };
-  }
-
-  if (!ACTIVE_UPLOAD_STATUSES.has(upload.status)) {
-    return {
-      key: 'inactive',
-      usable: false,
-      label: t('explore.myData.datasetState.inactive'),
-      desc: t('explore.myData.datasetStateDesc.inactive'),
-      color: C.ice30,
-      bg: 'rgba(255,255,255,0.05)',
-      modeMeta: getYearModeMeta(rawMode, t),
-      usagePages: [],
-    };
-  }
-
-  if (buildStatus === 'failed') {
-    return {
-      key: 'failed',
-      usable: false,
-      label: t('explore.myData.datasetState.failed'),
-      desc: t('explore.myData.datasetStateDesc.failed'),
-      color: C.mars,
-      bg: 'rgba(199,91,57,0.1)',
-      modeMeta: getYearModeMeta(rawMode, t),
-      usagePages: [],
-    };
-  }
-
-  if (buildStatus === 'building') {
-    return {
-      key: 'building',
-      usable: false,
-      label: t('explore.myData.datasetState.building'),
-      desc: t('explore.myData.datasetStateDesc.building'),
-      color: '#f59e0b',
-      bg: 'rgba(245,158,11,0.1)',
-      modeMeta: getYearModeMeta(rawMode, t),
-      usagePages: [],
-    };
-  }
-
-  if (rawMode === 'personal_full_year') {
-    return {
-      key: upload.status === 'rejected' ? 'rejected_personal' : 'personal',
-      usable: true,
-      label: t('explore.myData.datasetState.personal'),
-      desc: upload.status === 'rejected'
-        ? t('explore.myData.datasetStateDesc.rejected')
-        : t('explore.myData.datasetStateDesc.personal'),
-      color: upload.status === 'rejected' ? C.mars : C.green,
-      bg: upload.status === 'rejected' ? 'rgba(199,91,57,0.1)' : 'rgba(74,207,172,0.1)',
-      modeMeta: getYearModeMeta(rawMode, t),
-      usagePages: [
-        t('explore.myData.usage.visual'),
-        t('explore.myData.usage.analysis'),
-        t('explore.myData.usage.predict'),
-        t('explore.myData.usage.training'),
-      ],
-    };
-  }
-
-  if (rawMode === 'personal_mcd_plus_system_openmars') {
-    if (type === 'mcd') {
-      return {
-        key: upload.status === 'rejected' ? 'rejected_mixed' : 'mixed',
-        usable: true,
-        label: t('explore.myData.datasetState.mixed'),
-        desc: upload.status === 'rejected'
-          ? t('explore.myData.datasetStateDesc.rejectedMixed')
-          : t('explore.myData.datasetStateDesc.mixed'),
-        color: upload.status === 'rejected' ? C.mars : C.blue,
-        bg: upload.status === 'rejected' ? 'rgba(199,91,57,0.1)' : 'rgba(74,158,255,0.1)',
-        modeMeta: getYearModeMeta(rawMode, t),
-        usagePages: [
-          t('explore.myData.usage.visual'),
-          t('explore.myData.usage.analysis'),
-          t('explore.myData.usage.predict'),
-          t('explore.myData.usage.training'),
-        ],
-      };
-    }
-
-    if (type === 'openmars') {
-      return {
-        key: 'fallback',
-        usable: false,
-        label: t('explore.myData.datasetState.fallback'),
-        desc: t('explore.myData.datasetStateDesc.fallback'),
-        color: C.ice30,
-        bg: 'rgba(255,255,255,0.05)',
-        modeMeta: getYearModeMeta(rawMode, t),
-        usagePages: [],
-      };
-    }
-  }
+  const color = datasetUsage.usable ? C.green : (upload?.status === 'invalid' || upload?.status === 'rejected' ? C.mars : C.ice30);
 
   return {
-    key: 'inactive',
-    usable: false,
-    label: t('explore.myData.datasetState.inactive'),
-    desc: t('explore.myData.datasetStateDesc.inactive'),
-    color: C.ice30,
-    bg: 'rgba(255,255,255,0.05)',
-    modeMeta: getYearModeMeta(rawMode, t),
-    usagePages: [],
+    key: datasetUsage.key,
+    usable: datasetUsage.usable,
+    label: datasetUsage.label,
+    desc: upload?.validation_message && !datasetUsage.usable ? upload.validation_message : datasetUsage.desc,
+    color,
+    bg: datasetUsage.usable ? 'rgba(74,207,172,0.1)' : (color === C.mars ? 'rgba(199,91,57,0.1)' : 'rgba(255,255,255,0.05)'),
+    modeMeta: getOverviewRoleMeta(datasetUsage, isZh),
+    usagePages: datasetUsage.pages,
+    typeSupported: ['mcd', 'openmars', 'nomad'].includes(type),
   };
 }
 
-function deriveAnalysisCondition(datasetState, buildStatus, copy) {
-  const passedValidation = !['invalid'].includes(datasetState.key);
-  const buildReady = buildStatus === 'ready';
-  const adopted = datasetState.usable;
-  const stable = !['failed', 'building', 'inactive', 'fallback'].includes(datasetState.key);
-
+function deriveAnalysisCondition(datasetState, copy) {
   return {
-    ok: passedValidation && buildReady && adopted && stable,
+    ok: datasetState.usable,
     rules: [
-      { label: copy.ruleValid, ok: passedValidation },
-      { label: copy.ruleBuildReady, ok: buildReady },
-      { label: copy.ruleAdopted, ok: adopted },
-      { label: copy.ruleRejected, ok: stable },
+      { label: copy.ruleValid, ok: datasetState.key !== 'unusable' },
+      { label: copy.ruleBuildReady, ok: datasetState.usable },
+      { label: copy.ruleAdopted, ok: datasetState.typeSupported },
+      { label: copy.ruleRejected, ok: true },
     ],
   };
 }
@@ -543,19 +367,18 @@ function deriveContributionCondition(upload, copy) {
   };
 }
 
-function deriveLifecycleLabel(upload, datasetState, buildStatus, copy) {
+function deriveLifecycleLabel(upload, datasetState, copy) {
   if (upload?.status === 'invalid') return copy.lifecycleInvalid;
   if (upload?.status === 'rejected') return copy.lifecycleRejected;
   if (upload?.status === 'approved') return copy.lifecycleApproved;
   if (upload?.status === 'pending_review') return copy.lifecyclePending;
-  if (buildStatus === 'building' || datasetState.key === 'building') return copy.lifecycleBuilding;
   if (datasetState.usable) return copy.lifecycleReady;
-  if (datasetState.key === 'fallback' || datasetState.key === 'inactive') return copy.lifecycleFallback;
+  if (datasetState.key === 'unusable' || datasetState.key === 'unknown') return copy.lifecycleFallback;
   return copy.lifecycleUploading;
 }
 
 function isAttentionState(ctx) {
-  return ['invalid', 'failed', 'building', 'fallback', 'inactive', 'rejected_personal', 'rejected_mixed'].includes(ctx?.datasetState?.key);
+  return !ctx?.datasetState?.usable && !isContributionFlowItem(ctx);
 }
 
 function isContributionFlowItem(ctx) {
@@ -822,69 +645,6 @@ function UploadZone({
   );
 }
 
-function CurrentSourcePanel({ personalInfo, buildStatus, t }) {
-  const buildMeta = getBuildStatusMeta(buildStatus, t);
-  const activeYears = Object.entries(personalInfo?.details || {}).filter(([, detail]) => detail?.source_mode && detail.source_mode !== 'default');
-  const sourceMeta = personalInfo?.source_meta || {};
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%' }}>
-      <div
-        style={{
-          fontSize: 'calc(11px * var(--font-scale, 1))',
-          fontWeight: 700,
-          color: C.blue,
-          fontFamily: "'Orbitron', sans-serif",
-          letterSpacing: 2,
-        }}
-      >
-        {t('explore.myData.currentSourceTitle')}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
-        <TopMetric label={t('explore.myData.currentSourceBuild')} value={buildMeta.label} accent={buildMeta.color} />
-        <TopMetric
-          label={t('explore.myData.currentSourceEffective')}
-          value={getEffectiveSourceLabel(sourceMeta, t)}
-          accent={sourceMeta.effective_source === 'personal_available' ? C.green : C.ice60}
-        />
-        <TopMetric
-          label={t('explore.myData.currentSourceYears')}
-          value={activeYears.length}
-          accent={activeYears.length > 0 ? C.blue : C.ice60}
-        />
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {activeYears.length > 0 ? (
-          activeYears.map(([yearKey, detail]) => {
-            const modeMeta = getYearModeMeta(detail.source_mode, t);
-            return <Badge key={yearKey} label={`${yearKey} | ${modeMeta.label}`} color={modeMeta.color} bg={modeMeta.bg} />;
-          })
-        ) : (
-          <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30 }}>{t('explore.myData.currentSourceEmpty')}</div>
-        )}
-      </div>
-
-      <div
-        style={{
-          border: `1px solid ${C.border}`,
-          borderRadius: 12,
-          padding: '12px 14px',
-          background: 'rgba(255,255,255,0.02)',
-        }}
-      >
-        <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.75 }}>
-          {sourceMeta.message || t('explore.myData.currentSourceHint')}
-        </div>
-        <div style={{ marginTop: 6, fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.7 }}>
-          {t('explore.myData.currentSourceUseHint')}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function RuleList({ title, ok, desc, rules, copy }) {
   return (
     <div
@@ -1040,7 +800,7 @@ function UsagePanel({ pages, copy }) {
       <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice, fontWeight: 700, marginBottom: 10 }}>{copy.accessTitle}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {pages.map((page) => (
-          <Badge key={page} label={page} color={C.blue} bg="rgba(74,158,255,0.1)" />
+          <Badge key={page} label={page} color={C.green} bg="rgba(74,207,172,0.1)" />
         ))}
       </div>
     </div>
@@ -1199,8 +959,6 @@ export default function MyDataTab({ reviewSignal = 0 }) {
 
   const [uploads, setUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
-  const [personalSourceInfo, setPersonalSourceInfo] = useState(null);
-  const [personalBuildStatus, setPersonalBuildStatus] = useState(null);
   const [viewingId, setViewingId] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1222,63 +980,19 @@ export default function MyDataTab({ reviewSignal = 0 }) {
   const loadWorkbench = useCallback(async () => {
     if (!user) return;
     setUploadsLoading(true);
-
-    const [uploadsRes, sourceRes] = await Promise.allSettled([
-      getMyUploads(),
-      fetchDataInfo({ dataSource: 'personal' }),
-    ]);
-
-    if (uploadsRes.status === 'fulfilled') {
-      setUploads(Array.isArray(uploadsRes.value) ? uploadsRes.value : []);
-    } else {
-      console.error('Load uploads error:', uploadsRes.reason);
+    try {
+      const uploadsRes = await getMyUploads();
+      setUploads(Array.isArray(uploadsRes) ? uploadsRes : []);
+    } catch (error) {
+      console.error('Load uploads error:', error);
+    } finally {
+      setUploadsLoading(false);
     }
-
-    if (sourceRes.status === 'fulfilled') {
-      setPersonalSourceInfo(sourceRes.value);
-    } else {
-      setPersonalSourceInfo(null);
-    }
-
-    setUploadsLoading(false);
   }, [user]);
 
   useEffect(() => {
     if (user) loadWorkbench();
   }, [user, loadWorkbench, reviewSignal]);
-
-  useEffect(() => {
-    if (!user) {
-      setPersonalBuildStatus(null);
-      return undefined;
-    }
-
-    let active = true;
-    let timerId = null;
-
-    const poll = async () => {
-      try {
-        const status = await fetchPersonalBuildStatus();
-        if (!active) return;
-        setPersonalBuildStatus(status);
-        const stage = status?.stage || 'idle';
-        if (['queued', 'building_cache', 'warming_analysis', 'warming_predict'].includes(stage)) {
-          timerId = window.setTimeout(poll, 1200);
-        } else if (stage === 'ready') {
-          loadWorkbench().catch(() => {});
-        }
-      } catch {
-        if (!active) return;
-        timerId = window.setTimeout(poll, 2400);
-      }
-    };
-
-    poll();
-    return () => {
-      active = false;
-      if (timerId) window.clearTimeout(timerId);
-    };
-  }, [user, reviewSignal, loadWorkbench]);
 
   const loadViewData = useCallback(async (uploadId) => {
     setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: true, error: null });
@@ -1326,23 +1040,19 @@ export default function MyDataTab({ reviewSignal = 0 }) {
     }
   }, [viewingId]);
 
-  const buildStatus = useMemo(() => getBuildStatusKey(personalSourceInfo), [personalSourceInfo]);
-  const buildMeta = useMemo(() => getBuildStatusMeta(buildStatus, t), [buildStatus, t]);
-
   const uploadContexts = useMemo(() => {
     return uploads.map((upload) => {
-      const datasetState = deriveDatasetState(upload, personalSourceInfo, buildStatus, t);
+      const datasetState = deriveDatasetState(upload, isZh);
       return {
         upload,
-        buildMeta,
         uploadStatusMeta: getUploadStatusMeta(upload.status, t),
         datasetState,
-        analysisCondition: deriveAnalysisCondition(datasetState, buildStatus, copy),
+        analysisCondition: deriveAnalysisCondition(datasetState, copy),
         contributionCondition: deriveContributionCondition(upload, copy),
-        lifecycleLabel: deriveLifecycleLabel(upload, datasetState, buildStatus, copy),
+        lifecycleLabel: deriveLifecycleLabel(upload, datasetState, copy),
       };
     });
-  }, [uploads, buildMeta, personalSourceInfo, buildStatus, t, copy]);
+  }, [uploads, isZh, t, copy]);
 
   const uploadContextMap = useMemo(() => new Map(uploadContexts.map((ctx) => [ctx.upload.id, ctx])), [uploadContexts]);
   const sortedUploadContexts = useMemo(() => {
@@ -1360,9 +1070,8 @@ export default function MyDataTab({ reviewSignal = 0 }) {
   );
 
   const summaryStats = useMemo(() => {
-    const activeYears = Object.values(personalSourceInfo?.details || {}).filter((detail) => detail?.source_mode && detail.source_mode !== 'default').length;
     const usable = uploadContexts.filter((ctx) => ctx.datasetState.usable).length;
-    const building = uploadContexts.filter((ctx) => ctx.datasetState.key === 'building' || ctx.lifecycleLabel === copy.lifecycleUploading).length;
+    const building = uploadContexts.filter((ctx) => ctx.lifecycleLabel === copy.lifecycleUploading).length;
     const contributionReady = uploadContexts.filter((ctx) => ctx.contributionCondition.ok).length;
     const inReview = uploadContexts.filter((ctx) => ctx.upload.status === 'pending_review').length;
     const approved = uploadContexts.filter((ctx) => ctx.upload.status === 'approved').length;
@@ -1370,13 +1079,12 @@ export default function MyDataTab({ reviewSignal = 0 }) {
     return {
       total: uploads.length,
       usable,
-      activeYears,
       building,
       contributionReady,
       inReview,
       approved,
     };
-  }, [uploads.length, uploadContexts, personalSourceInfo, copy.lifecycleUploading]);
+  }, [uploads.length, uploadContexts, copy.lifecycleUploading]);
 
   const filterDefs = useMemo(() => ([
     { key: 'all', label: copy.filterAll, accent: C.blue },
@@ -1604,8 +1312,16 @@ export default function MyDataTab({ reviewSignal = 0 }) {
             />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <CurrentSourcePanel personalInfo={personalSourceInfo} buildStatus={buildStatus} t={t} />
-              <PersonalSourceWarmupBar status={personalBuildStatus || personalSourceInfo?.source_meta} />
+              <GlowCard style={{ padding: '16px 18px' }}>
+                <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', fontWeight: 700, color: C.green, fontFamily: "'Orbitron', sans-serif", letterSpacing: 2, marginBottom: 8 }}>
+                  {isZh ? '使用边界' : 'Usage Boundary'}
+                </div>
+                <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8 }}>
+                  {isZh
+                    ? '这里上传的是数据总览可视化原始数据：MCD 需能提供臭氧与环境变量，OpenMARS / NOMAD 需提供网格化臭氧图层。训练与预测页面使用的融合数据由管理员在服务器后台维护。'
+                    : 'Uploads here are raw datasets for Data Overview visualization: MCD must provide ozone plus environmental fields, while OpenMARS / NOMAD provide gridded ozone layers. Fusion data for training and prediction is maintained by admins on the server.'}
+                </div>
+              </GlowCard>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.7 }}>
@@ -1796,7 +1512,6 @@ export default function MyDataTab({ reviewSignal = 0 }) {
                   <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     <Badge label={viewingCtx.datasetState.label} color={viewingCtx.datasetState.color} bg={viewingCtx.datasetState.bg} />
                     <Badge label={viewingCtx.datasetState.modeMeta.label} color={viewingCtx.datasetState.modeMeta.color} bg={viewingCtx.datasetState.modeMeta.bg} />
-                    <Badge label={viewingCtx.buildMeta.label} color={viewingCtx.buildMeta.color} bg={viewingCtx.buildMeta.bg} />
                     <Badge label={viewingCtx.uploadStatusMeta.label} color={viewingCtx.uploadStatusMeta.color} bg={viewingCtx.uploadStatusMeta.bg} />
                   </div>
                 </div>

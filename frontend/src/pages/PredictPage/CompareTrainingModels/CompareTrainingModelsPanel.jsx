@@ -9,6 +9,7 @@ import {
   buildCompareParameterRows,
   buildPfiMatrix,
   buildStepCurveTraces,
+  normalizeCompareDataSource,
   sortCompareItems,
 } from './compareTrainingModelsData';
 
@@ -179,7 +180,7 @@ function SummaryTable({ items, precision, isZh }) {
                   <td style={{ padding: '12px', color: C.ice70, fontSize: 'calc(11px * var(--font-scale, 1))', fontWeight: 700 }}>{(item.selected_channels || []).join(' / ') || 'O3 only'}</td>
                   <td style={{ padding: '12px', color: C.ice70, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{hypers.window ?? '--'}</td>
                   <td style={{ padding: '12px', color: C.ice70, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{hypers.horizon ?? '--'}</td>
-                  <td style={{ padding: '12px', color: C.ice70, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{hypers._effective_data_source || hypers._data_source || 'default'}</td>
+                  <td style={{ padding: '12px', color: C.ice70, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{normalizeCompareDataSource(hypers._effective_data_source || hypers._data_source)}</td>
                 </tr>
               );
             })}

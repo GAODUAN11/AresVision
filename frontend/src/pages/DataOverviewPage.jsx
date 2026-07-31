@@ -11,6 +11,7 @@ import { buildOverviewSceneModel } from './DataOverviewPage/overviewSceneModel';
 import TopStatusBar from './DataOverviewPage/TopStatusBar';
 import SidebarMenu from './DataOverviewPage/SidebarMenu';
 import DetailPanel from './DataOverviewPage/DetailPanel';
+import DeepSpaceBackdrop from './DataOverviewPage/DeepSpaceBackdrop';
 import Mars3DBackground from './DataOverviewPage/Mars3DBackground';
 import TimelineController from './DataOverviewPage/TimelineController';
 import AICopilotWidget from './DataOverviewPage/AICopilotWidget'; 
@@ -226,6 +227,7 @@ const DataOverviewPageContent = () => {
 
   return (
     <div className="space-scene" style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative' }}>
+      <DeepSpaceBackdrop />
       
       {/* 绝对底层的 3D 背景 */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
@@ -240,6 +242,7 @@ const DataOverviewPageContent = () => {
           showMarsTexture={showMarsTexture}
           leftPanelWidth={leftPanelWidth}
           rightPanelWidth={rightPanelWidth}
+          solarLongitudeLs={globalTimeLs}
           onGlobeClick={(coord) => setSelectedCoordinate(coord)}
         />
       </div>

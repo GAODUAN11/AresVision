@@ -17,6 +17,7 @@ from schemas.explore import (
     HeatmapResponse,
     OverviewInfoResponse,
     OverviewOzoneSourcesResponse,
+    PointProbeResponse,
     SeasonalBandsResponse,
 )
 from services.analysis_service import AnalysisService
@@ -284,6 +285,32 @@ async def get_overview_globe_data(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"MCD 总览球体数据处理错误: {exc}")
+
+@router.get("/overview/point-probe", response_model=PointProbeResponse)
+async def get_overview_point_probe(
+    request: Request,
+    my: int = Query(DEFAULT_MARS_YEAR, description="Mars year"),
+    lat: float = Query(..., ge=-90, le=90, description="Clicked latitude"),
+    lng: float = Query(..., ge=-180, le=180, description="Clicked longitude"),
+    ls: float = Query(0.0, ge=0, le=360, description="Solar longitude Ls"),
+    variable: str = Query("o3col", description="Display variable", enum=["o3col"] + OVERVIEW_MCD_VARIABLES),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
+):
+    try:
+        variable = _validate_overview_variable(variable, include_ozone=True)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
+        result = service.get_point_probe(resolved_year, lat, lng, ls, variable=variable)
+        return _with_source_meta(result, source_meta)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"MCD point probe processing error: {exc}")
 
 
 @router.get("/overview/seasonal-heatmap", response_model=HeatmapResponse)

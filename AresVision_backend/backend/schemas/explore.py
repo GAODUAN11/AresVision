@@ -43,6 +43,47 @@ class GlobeDataResponse(BaseModel):
     source_meta: SourceMeta | None = None
 
 
+class PointProbeRequested(BaseModel):
+    lat: float
+    lng: float
+    ls: float
+
+
+class PointProbeGridPoint(BaseModel):
+    lat: float
+    lng: float
+
+
+class PointProbeCurrent(BaseModel):
+    ls: float
+    value: float | None = None
+
+
+class PointProbeSeries(BaseModel):
+    ls: list[float]
+    point: list[float | None]
+    globalMean: list[float | None]
+    latitudeMean: list[float | None]
+
+
+class PointProbeComparison(BaseModel):
+    globalMean: float | None = None
+    latitudeMean: float | None = None
+    pointMinusGlobal: float | None = None
+    pointMinusLatitudeMean: float | None = None
+
+
+class PointProbeResponse(BaseModel):
+    requested: PointProbeRequested
+    gridPoint: PointProbeGridPoint
+    current: PointProbeCurrent
+    series: PointProbeSeries
+    comparison: PointProbeComparison
+    variable: str = "o3col"
+    mars_year: int
+    source_meta: SourceMeta | None = None
+
+
 class HeatmapResponse(BaseModel):
     x: list[float]
     y: list[float]

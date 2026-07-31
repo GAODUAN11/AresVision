@@ -3,9 +3,10 @@ import C from '../constants/colors';
 import { useT } from '../i18n';
 import { useSettings } from '../contexts/SettingsContext';
 import { DataOverviewProvider, useDataOverview } from '../contexts/DataOverviewContext';
-import { fetchOverviewGlobeData, fetchOverviewInfo, fetchOverviewOzoneSources } from '../services/api';
+import { fetchOverviewGlobeData, fetchOverviewInfo, fetchOverviewOzoneSources, fetchOverviewPointProbe } from '../services/api';
 import useHandTracking from '../hooks/useHandTracking';
 import { buildOverviewSceneModel } from './DataOverviewPage/overviewSceneModel';
+import { buildLocalPointProbe } from './DataOverviewPage/pointProbeModel';
 
 // Sub-components
 import TopStatusBar from './DataOverviewPage/TopStatusBar';
@@ -16,6 +17,7 @@ import Mars3DBackground from './DataOverviewPage/Mars3DBackground';
 import TimelineController from './DataOverviewPage/TimelineController';
 import AICopilotWidget from './DataOverviewPage/AICopilotWidget'; 
 import GlobeLegend from './DataOverviewPage/GlobeLegend';
+import PointProbeModal from './DataOverviewPage/PointProbeModal';
 
 const DataOverviewPageContent = () => {
   const t = useT();
@@ -32,7 +34,6 @@ const DataOverviewPageContent = () => {
     setOverviewOzoneCapabilities,
     globalTimeLs, setGlobalTimeLs, 
     isPlayingTimeline, setIsPlayingTimeline,
-    setSelectedCoordinate,
     overviewTimeline,
     autoRotate,
     gestureEnabled,
@@ -51,10 +52,14 @@ const DataOverviewPageContent = () => {
   } = useDataOverview();
 
   const [loadingGlobe, setLoadingGlobe] = useState(false);
+  const [pointProbe, setPointProbe] = useState(null);
+  const [pointProbeLoading, setPointProbeLoading] = useState(false);
+  const [pointProbeError, setPointProbeError] = useState('');
 
   const timerRef = useRef(null);
   const mainAbortRef = useRef(null);
   const overlayAbortRef = useRef(null);
+  const pointProbeAbortRef = useRef(null);
   const globeCanvasRef = useRef(null);
   const landmarksCanvasRef = useRef(null);
 
@@ -160,6 +165,59 @@ const DataOverviewPageContent = () => {
     }
   }, [overviewSourceParams, globeVariable, ozoneDisplayMode, setOzoneOverlayPayload]);
 
+  const handleClosePointProbe = useCallback(() => {
+    if (pointProbeAbortRef.current) pointProbeAbortRef.current.abort();
+    setPointProbe(null);
+    setPointProbeLoading(false);
+    setPointProbeError('');
+  }, []);
+
+  const handleGlobeClick = useCallback((coord) => {
+    if (!Number.isFinite(coord?.lat) || !Number.isFinite(coord?.lng)) return;
+    if (pointProbeAbortRef.current) pointProbeAbortRef.current.abort();
+
+    const localProbe = buildLocalPointProbe({
+      requested: { ...coord, ls: globalTimeLs },
+      sliceData: { ...mcdMainSlice, ls: globalTimeLs, variable: globeVariable },
+    });
+    setPointProbe(localProbe || {
+      status: 'local',
+      variable: globeVariable,
+      requested: { ...coord, ls: globalTimeLs },
+      gridPoint: coord,
+      current: { ls: globalTimeLs, value: null },
+      series: { ls: [], point: [], globalMean: [], latitudeMean: [] },
+      comparison: {},
+    });
+    setPointProbeLoading(true);
+    setPointProbeError('');
+
+    const ctrl = new AbortController();
+    pointProbeAbortRef.current = ctrl;
+    fetchOverviewPointProbe(marsYear, coord.lat, coord.lng, globalTimeLs, globeVariable, {
+      ...overviewSourceParams,
+      signal: ctrl.signal,
+    })
+      .then((payload) => {
+        if (!ctrl.signal.aborted) {
+          setPointProbe({ status: 'ready', ...payload });
+        }
+      })
+      .catch((err) => {
+        if (!ctrl.signal.aborted) {
+          console.error('Point probe data error:', err);
+          setPointProbeError(err?.message || 'Point probe data failed');
+        }
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setPointProbeLoading(false);
+      });
+  }, [globalTimeLs, globeVariable, marsYear, mcdMainSlice, overviewSourceParams]);
+
+  useEffect(() => () => {
+    if (pointProbeAbortRef.current) pointProbeAbortRef.current.abort();
+  }, []);
+
   useEffect(() => {
     let active = true;
     setIsSwitchingSource(true);
@@ -243,7 +301,7 @@ const DataOverviewPageContent = () => {
           leftPanelWidth={leftPanelWidth}
           rightPanelWidth={rightPanelWidth}
           solarLongitudeLs={globalTimeLs}
-          onGlobeClick={(coord) => setSelectedCoordinate(coord)}
+          onGlobeClick={handleGlobeClick}
         />
       </div>
 
@@ -336,6 +394,13 @@ const DataOverviewPageContent = () => {
           <GlobeLegend ozoneData={sceneModel.layers[0] || mcdMainSlice} sceneModel={sceneModel} />
         </div>
       </div>
+
+      <PointProbeModal
+        probe={pointProbe}
+        loading={pointProbeLoading}
+        error={pointProbeError}
+        onClose={handleClosePointProbe}
+      />
 
     </div>
   );

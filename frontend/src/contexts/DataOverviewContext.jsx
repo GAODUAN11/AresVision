@@ -1,6 +1,18 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import {
+  buildOzoneCapabilitiesForSourceModes,
+  buildOzoneLayerSourceSelection,
+} from '../pages/DataOverviewPage/uploadedSourceOptions';
 
 const DataOverviewContext = createContext();
+
+const EMPTY_UPLOAD_OPTIONS = { mcd: [], openmars: [], nomad: [] };
+const DEFAULT_OZONE_CAPABILITIES = {
+  openmars: true,
+  nomad: false,
+  diff_pairs: ['MCD-OpenMARS'],
+  coverage: {},
+};
 
 export const useDataOverview = () => {
   const context = useContext(DataOverviewContext);
@@ -16,16 +28,13 @@ export const DataOverviewProvider = ({ children }) => {
   const [marsYear, setMarsYear] = useState(27);
   const [availableMarsYears, setAvailableMarsYears] = useState([27, 28]);
   const [selectedMcdUploadId, setSelectedMcdUploadId] = useState(null);
-  const [selectedOpenMarsUploadId, setSelectedOpenMarsUploadId] = useState(null);
-  const [selectedNomadUploadId, setSelectedNomadUploadId] = useState(null);
+  const [overviewUploadOptions, setOverviewUploadOptions] = useState(EMPTY_UPLOAD_OPTIONS);
+  const [openMarsSourceMode, setOpenMarsSourceMode] = useState('official');
+  const [nomadSourceMode, setNomadSourceMode] = useState('official');
   const [isSwitchingSource, setIsSwitchingSource] = useState(false);
   const [sourceMeta, setSourceMeta] = useState(null);
   const [overviewTimeline, setOverviewTimeline] = useState({ min: 0, max: 360, step: 5 });
-  const [overviewOzoneCapabilities, setOverviewOzoneCapabilities] = useState({
-    openmars: true,
-    nomad: false,
-    diff_pairs: ['MCD-OpenMARS'],
-  });
+  const [officialOverviewOzoneCapabilities, setOverviewOzoneCapabilities] = useState(DEFAULT_OZONE_CAPABILITIES);
   const [globalTimeLs, setGlobalTimeLs] = useState(0);
   const [isPlayingTimeline, setIsPlayingTimeline] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -72,9 +81,25 @@ export const DataOverviewProvider = ({ children }) => {
 
   const overviewSourceParams = useMemo(() => ({
     mcdUploadId: selectedMcdUploadId,
-    openmarsUploadId: selectedOpenMarsUploadId,
-    nomadUploadId: selectedNomadUploadId,
-  }), [selectedMcdUploadId, selectedOpenMarsUploadId, selectedNomadUploadId]);
+  }), [selectedMcdUploadId]);
+
+  const ozoneLayerSourceSelection = useMemo(() => buildOzoneLayerSourceSelection({
+    mcdUploadId: selectedMcdUploadId,
+    uploads: overviewUploadOptions,
+    marsYear,
+    ls: globalTimeLs,
+    openMarsSourceMode,
+    nomadSourceMode,
+  }), [globalTimeLs, marsYear, nomadSourceMode, openMarsSourceMode, overviewUploadOptions, selectedMcdUploadId]);
+
+  const ozoneSourceParams = ozoneLayerSourceSelection.params;
+
+  const overviewOzoneCapabilities = useMemo(() => buildOzoneCapabilitiesForSourceModes({
+    officialCapabilities: officialOverviewOzoneCapabilities,
+    uploads: overviewUploadOptions,
+    openMarsSourceMode,
+    nomadSourceMode,
+  }), [nomadSourceMode, officialOverviewOzoneCapabilities, openMarsSourceMode, overviewUploadOptions]);
 
   const contextValue = {
     expandedCard,
@@ -89,11 +114,15 @@ export const DataOverviewProvider = ({ children }) => {
     setAvailableMarsYears,
     selectedMcdUploadId,
     setSelectedMcdUploadId,
-    selectedOpenMarsUploadId,
-    setSelectedOpenMarsUploadId,
-    selectedNomadUploadId,
-    setSelectedNomadUploadId,
+    overviewUploadOptions,
+    setOverviewUploadOptions,
+    openMarsSourceMode,
+    setOpenMarsSourceMode,
+    nomadSourceMode,
+    setNomadSourceMode,
     overviewSourceParams,
+    ozoneSourceParams,
+    ozoneLayerSourceSelection,
     isSwitchingSource,
     setIsSwitchingSource,
     sourceMeta,

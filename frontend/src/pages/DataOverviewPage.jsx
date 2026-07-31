@@ -7,6 +7,7 @@ import { fetchOverviewGlobeData, fetchOverviewInfo, fetchOverviewOzoneSources, f
 import useHandTracking from '../hooks/useHandTracking';
 import { buildOverviewSceneModel } from './DataOverviewPage/overviewSceneModel';
 import { buildLocalPointProbe } from './DataOverviewPage/pointProbeModel';
+import { filterOzoneOverlayBySourceModes } from './DataOverviewPage/uploadedSourceOptions';
 
 // Sub-components
 import TopStatusBar from './DataOverviewPage/TopStatusBar';
@@ -27,6 +28,8 @@ const DataOverviewPageContent = () => {
     marsYear, 
     setMarsYear,
     overviewSourceParams,
+    ozoneSourceParams,
+    ozoneLayerSourceSelection,
     setAvailableMarsYears,
     setSourceMeta,
     setIsSwitchingSource,
@@ -153,9 +156,9 @@ const DataOverviewPageContent = () => {
     const ctrl = new AbortController();
     overlayAbortRef.current = ctrl;
     try {
-      const payload = await fetchOverviewOzoneSources(year, ls, overviewSourceParams);
+      const payload = await fetchOverviewOzoneSources(year, ls, ozoneSourceParams);
       if (!ctrl.signal.aborted) {
-        setOzoneOverlayPayload(payload);
+        setOzoneOverlayPayload(filterOzoneOverlayBySourceModes(payload, ozoneLayerSourceSelection));
       }
     } catch (e) {
       if (!ctrl.signal.aborted) {
@@ -163,7 +166,7 @@ const DataOverviewPageContent = () => {
         setOzoneOverlayPayload(null);
       }
     }
-  }, [overviewSourceParams, globeVariable, ozoneDisplayMode, setOzoneOverlayPayload]);
+  }, [globeVariable, ozoneDisplayMode, ozoneLayerSourceSelection, ozoneSourceParams, setOzoneOverlayPayload]);
 
   const handleClosePointProbe = useCallback(() => {
     if (pointProbeAbortRef.current) pointProbeAbortRef.current.abort();

@@ -226,6 +226,12 @@ async def get_overview_info(
             resolved_year = int(record.mars_year or DEFAULT_MARS_YEAR)
             view = UserMcdOverviewDataView(upload_id=record.id, mars_year=resolved_year, data=data)
             ls_min, ls_max = view.get_ls_range(resolved_year)
+            official_capabilities = dict(request.app.state.mcd_overview_service.get_ozone_capabilities())
+            coverage = dict(official_capabilities.get("coverage") or {})
+            coverage["mcd"] = {
+                str(resolved_year): [{"start": float(ls_min), "end": float(ls_max)}]
+            }
+            official_capabilities["coverage"] = coverage
             return {
                 "available_years": [resolved_year],
                 "timeline": {
@@ -233,12 +239,7 @@ async def get_overview_info(
                     "max": float(ls_max),
                     "step": 5.0,
                 },
-                "ozone_capabilities": {
-                    "openmars": True,
-                    "nomad": True,
-                    "diff_pairs": ["MCD-OpenMARS", "MCD-NOMAD"],
-                    "coverage": {},
-                },
+                "ozone_capabilities": official_capabilities,
                 "source_meta": _uploaded_source_meta(record, "user_mcd"),
             }
 

@@ -24,6 +24,7 @@ const DataOverviewPageContent = () => {
   const t = useT();
   const { settings } = useSettings();
   const isLight = settings?.theme === 'light';
+  const isZh = settings?.language !== 'en';
   const { 
     marsYear, 
     setMarsYear,
@@ -58,6 +59,8 @@ const DataOverviewPageContent = () => {
   const [pointProbe, setPointProbe] = useState(null);
   const [pointProbeLoading, setPointProbeLoading] = useState(false);
   const [pointProbeError, setPointProbeError] = useState('');
+  const [gestureStatus, setGestureStatus] = useState(null);
+  const [gesturePointer, setGesturePointer] = useState(null);
 
   const timerRef = useRef(null);
   const mainAbortRef = useRef(null);
@@ -71,17 +74,6 @@ const DataOverviewPageContent = () => {
   // Keep gesture capture window compact to reduce scene occlusion.
   const GESTURE_WINDOW_WIDTH = 190;
   const GESTURE_WINDOW_HEIGHT = 142;
-
-  useEffect(() => {
-    setOnGesture((gesture) => {
-      if (!globeCanvasRef.current) return;
-      if (gesture.type === 'rotate') {
-        globeCanvasRef.current.applyGestureRotation(gesture.dx, gesture.dy);
-      } else if (gesture.type === 'zoom') {
-        globeCanvasRef.current.applyGestureZoom(gesture.dDist);
-      }
-    });
-  }, [setOnGesture]);
 
   useEffect(() => {
     setOnLandmarks((landmarks) => {
@@ -217,6 +209,105 @@ const DataOverviewPageContent = () => {
       });
   }, [globalTimeLs, globeVariable, marsYear, mcdMainSlice, overviewSourceParams]);
 
+  const mapGesturePointerToClientPoint = useCallback((gesture) => {
+    const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
+    const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight;
+    const left = Math.max(24, Math.min(viewportWidth - 160, leftPanelWidth + 28));
+    const right = Math.max(left + 160, viewportWidth - rightPanelWidth - 28);
+    const top = 86;
+    const bottom = Math.max(top + 160, viewportHeight - 156);
+    const x = Math.max(0, Math.min(1, gesture.x ?? 0.5));
+    const y = Math.max(0, Math.min(1, gesture.y ?? 0.5));
+    return {
+      x: left + x * (right - left),
+      y: top + y * (bottom - top),
+    };
+  }, [leftPanelWidth, rightPanelWidth]);
+
+  useEffect(() => {
+    if (!gestureEnabled) {
+      setGesturePointer(null);
+      setGestureStatus(null);
+      return;
+    }
+
+    setOnGesture((gesture) => {
+      if (gesture.type === 'status' && gesture.mode === 'idle') {
+        setGesturePointer(null);
+        setGestureStatus({
+          text: isZh ? '等待手势进入画面' : 'Waiting for a hand gesture',
+          accent: C.ice50,
+        });
+        return;
+      }
+
+      if (gesture.type === 'rotate') {
+        globeCanvasRef.current?.applyGestureRotation?.(gesture.dx, gesture.dy);
+        setGesturePointer(null);
+        setGestureStatus({
+          text: isZh ? '单手拖拽：旋转火星' : 'One hand: rotating Mars',
+          accent: C.mars,
+        });
+        return;
+      }
+
+      if (gesture.type === 'zoom') {
+        globeCanvasRef.current?.applyGestureZoom?.(gesture.dDist);
+        setGesturePointer(null);
+        setGestureStatus({
+          text: isZh ? '双手开合：缩放视图' : 'Two hands: zooming view',
+          accent: C.blue,
+        });
+        return;
+      }
+
+      if (gesture.type === 'toggleTimeline') {
+        if (pointProbe) {
+          handleClosePointProbe();
+          setGesturePointer(null);
+          setGestureStatus({
+            text: isZh ? '握拳：关闭点位数据' : 'Fist: closed point probe',
+            accent: C.green,
+          });
+          return;
+        }
+        setIsPlayingTimeline((value) => !value);
+        setGesturePointer(null);
+        setGestureStatus({
+          text: isZh ? '握拳：切换播放 / 暂停' : 'Fist: toggled play / pause',
+          accent: C.green,
+        });
+        return;
+      }
+
+      if (gesture.type === 'pointHover') {
+        const clientPoint = mapGesturePointerToClientPoint(gesture);
+        const progress = Math.max(0, Math.min(1, gesture.progress ?? 0));
+        setGesturePointer({ ...clientPoint, progress });
+        setGestureStatus({
+          text: isZh
+            ? `张掌停留选点 ${Math.round(progress * 100)}%`
+            : `Open palm dwell to probe ${Math.round(progress * 100)}%`,
+          accent: C.marsLight,
+        });
+        return;
+      }
+
+      if (gesture.type === 'selectPoint') {
+        const clientPoint = mapGesturePointerToClientPoint(gesture);
+        const coord = globeCanvasRef.current?.pickGlobeAtClientPoint?.(clientPoint.x, clientPoint.y);
+        setGesturePointer({ ...clientPoint, progress: 1, selected: Boolean(coord) });
+        setGestureStatus({
+          text: coord
+            ? (isZh ? '已选中火星点位' : 'Mars point selected')
+            : (isZh ? '准星未命中球体' : 'Reticle missed the globe'),
+          accent: coord ? C.green : C.mars,
+        });
+        if (coord) handleGlobeClick(coord);
+      }
+    });
+  }, [gestureEnabled, handleClosePointProbe, handleGlobeClick, isZh, mapGesturePointerToClientPoint, pointProbe, setIsPlayingTimeline, setOnGesture]);
+
   useEffect(() => () => {
     if (pointProbeAbortRef.current) pointProbeAbortRef.current.abort();
   }, []);
@@ -344,10 +435,10 @@ const DataOverviewPageContent = () => {
           )}
           <div style={{
             position: 'absolute', top: '10px', left: '10px', background: isLight ? 'rgba(255,255,255,0.92)' : 'rgba(12,18,28,0.82)',
-            padding: '4px 8px', borderRadius: '999px', color: C.ice, fontSize: 'calc(10px * var(--font-scale, 1))',
+            padding: '4px 8px', borderRadius: '999px', color: gestureStatus?.accent || C.ice, fontSize: 'calc(10px * var(--font-scale, 1))',
             fontWeight: 600, fontFamily: 'var(--font-body)', zIndex: 3, border: `1px solid ${C.borderStrong}`
           }}>
-            {gestureError ? t('overview.controls.gestureErrorTitle') : t('overview.controls.cameraTracking')}
+            {gestureError ? t('overview.controls.gestureErrorTitle') : (gestureStatus?.text || t('overview.controls.cameraTracking'))}
           </div>
           {gestureError && (
             <div style={{
@@ -367,6 +458,58 @@ const DataOverviewPageContent = () => {
               {gestureError}
             </div>
           )}
+        </div>
+      )}
+
+      {gestureEnabled && gesturePointer && !gestureError && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            left: gesturePointer.x,
+            top: gesturePointer.y,
+            width: 46,
+            height: 46,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 1900,
+            pointerEvents: 'none',
+            borderRadius: '50%',
+            background: `conic-gradient(${gesturePointer.selected ? C.green : C.marsLight} ${Math.round((gesturePointer.progress || 0) * 360)}deg, rgba(255,255,255,0.14) 0deg)`,
+            boxShadow: gesturePointer.selected
+              ? '0 0 28px rgba(52,211,153,0.42)'
+              : '0 0 24px rgba(255,143,104,0.28)',
+            display: 'grid',
+            placeItems: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              background: isLight ? 'rgba(255,255,255,0.86)' : 'rgba(8,12,18,0.82)',
+              border: `1px solid ${gesturePointer.selected ? C.green : C.marsLight}`,
+              boxShadow: 'inset 0 0 12px rgba(0,0,0,0.24)',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              width: 2,
+              height: 58,
+              background: gesturePointer.selected ? C.green : C.marsLight,
+              opacity: 0.55,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              width: 58,
+              height: 2,
+              background: gesturePointer.selected ? C.green : C.marsLight,
+              opacity: 0.55,
+            }}
+          />
         </div>
       )}
 

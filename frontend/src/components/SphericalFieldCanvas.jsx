@@ -243,6 +243,10 @@ const SphericalFieldCanvas = forwardRef(({
   const directionalLightRef = useRef(null);
   const pickingMeshRef = useRef(null);
   const onGlobeClickRef = useRef(onGlobeClick);
+  const sceneRef = useRef(null);
+  const cameraRef = useRef(null);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const pointerRef = useRef(new THREE.Vector2());
 
   useEffect(() => {
     onGlobeClickRef.current = onGlobeClick;
@@ -298,6 +302,29 @@ const SphericalFieldCanvas = forwardRef(({
     offsetXRef.current = offsetX;
   }, [offsetX]);
 
+  const pickGlobeAtClientPoint = (clientX, clientY) => {
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const globe = sphereMeshRef.current;
+    const pickingMesh = pickingMeshRef.current;
+    if (!renderer || !camera || !globe || !pickingMesh) return null;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const xRatio = (clientX - rect.left) / rect.width;
+    const yRatio = (clientY - rect.top) / rect.height;
+    if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return null;
+
+    const pointer = pointerRef.current;
+    pointer.x = xRatio * 2 - 1;
+    pointer.y = -(yRatio * 2 - 1);
+    raycasterRef.current.setFromCamera(pointer, camera);
+    const [hit] = raycasterRef.current.intersectObject(pickingMesh, false);
+    if (!hit) return null;
+
+    const localPoint = globe.worldToLocal(hit.point.clone());
+    return localPointToLatLng(localPoint);
+  };
+
   // Expose imperative API for gesture control
   useImperativeHandle(ref, () => ({
     applyGestureRotation: (dx, dy) => {
@@ -326,16 +353,14 @@ const SphericalFieldCanvas = forwardRef(({
         const newDist = Math.max(1.2, Math.min(12.0, currentDist + step));
         cameraRef.current.position.setLength(newDist);
       }
-    }
+    },
+    pickGlobeAtClientPoint: (clientX, clientY) => pickGlobeAtClientPoint(clientX, clientY),
   }));
 
   // Update ref when prop changes so animation loop catches it
   useEffect(() => {
     autoRotateRef.current = autoRotate;
   }, [autoRotate]);
-
-  const sceneRef = useRef(null);
-  const cameraRef = useRef(null);
 
   // 1. 初始化 Three.js 场景、相机、渲染器和控制器（仅执行一次）
   useEffect(() => {
@@ -383,15 +408,7 @@ const SphericalFieldCanvas = forwardRef(({
 
     controlsRef.current = controls;
 
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
     let pointerStart = null;
-
-    const updatePointerFromEvent = (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
-    };
 
     const handlePointerDown = (event) => {
       if (event.button !== 0) return;
@@ -408,13 +425,8 @@ const SphericalFieldCanvas = forwardRef(({
       pointerStart = null;
       if (moved > 5 || elapsed > 850 || typeof onGlobeClickRef.current !== 'function') return;
 
-      updatePointerFromEvent(event);
-      raycaster.setFromCamera(pointer, cameraRef.current);
-      const [hit] = raycaster.intersectObject(pickingMeshRef.current, false);
-      if (!hit) return;
-
-      const localPoint = sphereMeshRef.current.worldToLocal(hit.point.clone());
-      onGlobeClickRef.current(localPointToLatLng(localPoint));
+      const coord = pickGlobeAtClientPoint(event.clientX, event.clientY);
+      if (coord) onGlobeClickRef.current(coord);
     };
 
     renderer.domElement.addEventListener('pointerdown', handlePointerDown);

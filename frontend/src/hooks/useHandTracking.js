@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { canStartHandTracking, createVideoRefBinder } from './handTrackingLifecycle.js';
+import { createHandGestureState, interpretHandGestureFrame } from './handGestureInterpreter.js';
 
 export default function useHandTracking(enabled = false) {
   const [isReady, setIsReady] = useState(false);
@@ -16,14 +17,7 @@ export default function useHandTracking(enabled = false) {
   const onGestureCb = useRef(null);
   const onLandmarksCb = useRef(null);
 
-  // 状态变量，用于计算相对增量
-  const lastState = useRef({
-    x: null,
-    y: null,
-    dist: null,
-    activeHands: 0,
-    timestamp: 0,
-  });
+  const gestureStateRef = useRef(createHandGestureState());
 
   // 暴露设置回调的方法
   const setOnGesture = useCallback((cb) => {
@@ -139,78 +133,19 @@ export default function useHandTracking(enabled = false) {
           onLandmarksCb.current(results.landmarks);
         }
 
-        processGestures(results);
+        processGestures(results, currentTimeInMs);
       }
 
       requestRef.current = requestAnimationFrame(predictWebcam);
     };
 
-    const processGestures = (results) => {
-      const state = lastState.current;
-      const hands = results.landmarks;
-
-      if (!hands || hands.length === 0) {
-        // 无手：重置历史状态
-        state.x = null;
-        state.y = null;
-        state.dist = null;
-        state.activeHands = 0;
-        return;
-      }
-
-      if (hands.length === 1) {
-        // 单手模式：平移旋转
-        // 计算手掌中心点算作整体位移参考点
-        const hand = hands[0];
-        const cx = (hand[0].x + hand[9].x) / 2;
-        const cy = (hand[0].y + hand[9].y) / 2;
-
-        // 仅当上一帧也是稳定的单手模式时才计算旋转，防止从双手(缩放)切回单手的一瞬间发生瞬移旋转
-        if (state.activeHands === 1 && state.x !== null) {
-          // 计算相对移动增量 (注意摄像头 X 是镜像的，为了自然操作感可能需要翻转)
-          const dx = -(cx - state.x);
-          const dy = (cy - state.y);
-
-          // 过滤抖动
-          if (Math.abs(dx) > 0.005 || Math.abs(dy) > 0.005) {
-            if (onGestureCb.current) {
-              onGestureCb.current({ type: 'rotate', dx, dy });
-            }
-          }
-        }
-        state.x = cx;
-        state.y = cy;
-        state.dist = null;
-        state.activeHands = 1;
-
-      } else if (hands.length === 2) {
-        // 双手模式：计算两手距离缩放
-        const hand1 = hands[0];
-        const hand2 = hands[1];
-
-        const h1cx = (hand1[0].x + hand1[9].x) / 2;
-        const h1cy = (hand1[0].y + hand1[9].y) / 2;
-
-        const h2cx = (hand2[0].x + hand2[9].x) / 2;
-        const h2cy = (hand2[0].y + hand2[9].y) / 2;
-
-        const currentDist = Math.hypot(h1cx - h2cx, h1cy - h2cy);
-
-        if (state.activeHands === 2 && state.dist !== null) {
-          const dDist = currentDist - state.dist;
-
-          // 过滤抖动
-          if (Math.abs(dDist) > 0.01) {
-            if (onGestureCb.current) {
-              onGestureCb.current({ type: 'zoom', dDist });
-            }
-          }
-        }
-        state.x = null;
-        state.y = null;
-        state.dist = currentDist;
-        state.activeHands = 2;
-      }
+    const processGestures = (results, timestamp) => {
+      const { events } = interpretHandGestureFrame({
+        hands: results.landmarks,
+        timestamp,
+      }, gestureStateRef.current);
+      if (!onGestureCb.current) return;
+      events.forEach((event) => onGestureCb.current(event));
     };
 
     startCamera();
@@ -233,7 +168,7 @@ export default function useHandTracking(enabled = false) {
       }
       video.srcObject = null;
 
-      lastState.current = { x: null, y: null, dist: null, activeHands: 0 };
+      gestureStateRef.current = createHandGestureState();
     };
   }, [enabled, videoElement, initHandLandmarker]);
 

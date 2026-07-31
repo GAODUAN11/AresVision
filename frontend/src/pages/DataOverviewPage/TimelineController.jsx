@@ -9,6 +9,7 @@ import {
   getActiveOzoneSources,
   getOzoneAvailabilityLabel,
 } from './timelineCoverage.js';
+import { formatTimelineLs } from './timelineFormatting.js';
 
 const SOURCE_LEGEND = [
   { key: 'mcd', label: 'MCD' },
@@ -46,6 +47,7 @@ export default function TimelineController() {
   const timelineMax = Number.isFinite(overviewTimeline?.max) ? overviewTimeline.max : 360;
   const timelineStep = Number.isFinite(overviewTimeline?.step) ? overviewTimeline.step : 5;
   const timelineSpan = timelineMax > timelineMin ? timelineMax - timelineMin : 360;
+  const displayedTimelineLs = formatTimelineLs(globalTimeLs);
   const coverage = overviewOzoneCapabilities?.coverage || {};
   const mcdSegments = buildCoverageSegments({ coverage, marsYear, source: 'mcd', min: timelineMin, max: timelineMax });
   const openmarsSegments = buildCoverageSegments({ coverage, marsYear, source: 'openmars', min: timelineMin, max: timelineMax });
@@ -140,7 +142,7 @@ export default function TimelineController() {
                   {availabilityLabel}
                 </div>
                 <div style={{ fontSize: 'calc(13px * var(--font-scale, 1))', color: C.mars, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
-                  {globalTimeLs}°
+                  {displayedTimelineLs}°
                 </div>
               </div>
             </div>

@@ -18,6 +18,7 @@ const Mars3DBackground = forwardRef(({
   showMarsTexture,
   leftPanelWidth,
   rightPanelWidth,
+  solarLongitudeLs,
   onGlobeClick,
 }, ref) => {
   const layerFields = useMemo(() => {
@@ -71,6 +72,7 @@ const Mars3DBackground = forwardRef(({
         showConcentration={showConcentration3D}
         showGeoAnnotations={showGeoAnnotations}
         showMars={showMarsTexture}
+        solarLongitudeLs={solarLongitudeLs}
         zoom={3.75} // reduce initial globe size by ~1/3 (visual size becomes ~2/3)
         offsetX={(rightPanelWidth - leftPanelWidth) / 2} // shift object to center it in remaining viewport space
         onGlobeClick={onGlobeClick}

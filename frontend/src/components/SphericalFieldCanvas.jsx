@@ -4,6 +4,7 @@ import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import { getRgb, rdbuRgb } from '../utils/colormaps';
 import { useSettings } from '../contexts/SettingsContext';
 import { buildCanvasFont, normalizeFontScale } from '../utils/fontScale';
+import { buildSeasonalSunLight } from './sphericalLighting';
 
 // --- 全局缓存贴图 ---
 let cachedMarsTexture = null;
@@ -221,6 +222,7 @@ const SphericalFieldCanvas = forwardRef(({
   showConcentration = true,
   showGeoAnnotations = true,
   offsetX = 0,
+  solarLongitudeLs = 0,
 }, ref) => {
   const { settings } = useSettings();
   const fontScale = normalizeFontScale(settings.appearance?.uiScale);
@@ -236,6 +238,7 @@ const SphericalFieldCanvas = forwardRef(({
   const offsetXRef = useRef(offsetX);
   const geoOverlayRef = useRef(null);
   const marsMeshRef = useRef(null);
+  const directionalLightRef = useRef(null);
 
   const addMarsMesh = (globeGroup) => {
     if (!globeGroup || marsMeshRef.current) return;
@@ -361,9 +364,15 @@ const SphericalFieldCanvas = forwardRef(({
     const ambientLight = new THREE.AmbientLight(0xffffff, isLight ? 0.8 : 0.2);
     scene.add(ambientLight);
 
+    const seasonalSunlight = buildSeasonalSunLight(solarLongitudeLs);
     const dirLight = new THREE.DirectionalLight(0xffffff, isLight ? 1.0 : 1.5);
-    dirLight.position.set(5, 3, 5);
+    dirLight.position.set(
+      seasonalSunlight.position.x,
+      seasonalSunlight.position.y,
+      seasonalSunlight.position.z,
+    );
     scene.add(dirLight);
+    directionalLightRef.current = dirLight;
 
     // --- 背景星星特效（恒定不变，在此初始化）---
     const starGeometry = new THREE.BufferGeometry();
@@ -450,10 +459,16 @@ const SphericalFieldCanvas = forwardRef(({
       if (child instanceof THREE.AmbientLight) {
         child.intensity = isLight ? 0.8 : 0.2;
       }
-      if (child instanceof THREE.DirectionalLight) {
-        child.intensity = isLight ? 1.0 : 1.5;
-      }
     });
+    const seasonalSunlight = buildSeasonalSunLight(solarLongitudeLs);
+    if (directionalLightRef.current) {
+      directionalLightRef.current.intensity = isLight ? 1.0 : 1.5;
+      directionalLightRef.current.position.set(
+        seasonalSunlight.position.x,
+        seasonalSunlight.position.y,
+        seasonalSunlight.position.z,
+      );
+    }
 
     if (sphereMeshRef.current) {
       if (geoOverlayRef.current) {
@@ -466,7 +481,7 @@ const SphericalFieldCanvas = forwardRef(({
       sphereMeshRef.current.add(overlay);
       geoOverlayRef.current = overlay;
     }
-  }, [fontScale, isLight, showGeoAnnotations]);
+  }, [fontScale, isLight, showGeoAnnotations, solarLongitudeLs]);
 
   useEffect(() => {
     if (geoOverlayRef.current) {
@@ -845,6 +860,7 @@ const SphericalFieldCanvas = forwardRef(({
         particleLayersRef.current = [];
         geoOverlayRef.current = null;
         marsMeshRef.current = null;
+        directionalLightRef.current = null;
       }
     };
   }, []);

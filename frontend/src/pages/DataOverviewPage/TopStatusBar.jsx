@@ -3,6 +3,7 @@ import C from '../../constants/colors';
 import { useT } from '../../i18n';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useDataOverview } from '../../contexts/DataOverviewContext';
+import { formatTimelineLs } from './timelineFormatting.js';
 
 function StatusItem({ label, value, valueColor = C.ice }) {
   return (
@@ -70,6 +71,7 @@ export default function TopStatusBar() {
   const focusValue = selectedCoordinate
     ? `${selectedCoordinate.lat.toFixed(1)}°, ${selectedCoordinate.lng.toFixed(1)}°`
     : (isZh ? '全球视图' : 'Global view');
+  const displayedTimelineLs = formatTimelineLs(globalTimeLs);
 
   return (
     <div
@@ -131,7 +133,7 @@ export default function TopStatusBar() {
 
         <StatusItem
           label={isZh ? '太阳黄经' : 'Solar longitude'}
-          value={`${globalTimeLs}°`}
+          value={`${displayedTimelineLs}°`}
           valueColor={C.mars}
         />
 

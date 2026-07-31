@@ -224,15 +224,43 @@ textarea {
 
 /* 太空观测场景容器（DataOverviewPage 全屏）——浅色主题改用深空渐变而非纯黑 */
 .space-scene {
-  background: radial-gradient(circle at 18% 18%, rgba(121, 187, 255, 0.16), transparent 32%),
-              radial-gradient(circle at 80% 14%, rgba(255, 143, 104, 0.12), transparent 24%),
-              radial-gradient(circle at 50% 100%, rgba(76, 110, 210, 0.12), transparent 38%),
-              linear-gradient(180deg, #02050b 0%, #040913 38%, #08111b 70%, #0c1521 100%);
+  isolation: isolate;
+  background: radial-gradient(ellipse at 50% 50%, rgba(10, 15, 24, 0.56), transparent 46%),
+              radial-gradient(ellipse at 68% 38%, rgba(25, 42, 68, 0.10), transparent 30%),
+              linear-gradient(180deg, #000000 0%, #010206 42%, #02040a 72%, #000104 100%);
 }
 [data-theme="light"] .space-scene {
-  background: radial-gradient(circle at 18% 18%, rgba(82, 145, 226, 0.12), transparent 28%),
-              radial-gradient(circle at 80% 15%, rgba(232, 132, 90, 0.10), transparent 22%),
-              linear-gradient(180deg, #e5edf7 0%, #d5e1ee 48%, #c6d5e4 100%);
+  background: radial-gradient(ellipse at 50% 56%, rgba(90, 118, 160, 0.16), transparent 48%),
+              radial-gradient(ellipse at 28% 36%, rgba(255, 196, 138, 0.08), transparent 34%),
+              linear-gradient(180deg, #dce7f3 0%, #c9d8e8 48%, #b8cada 100%);
+}
+
+.overview-deep-space-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.overview-deep-space-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.overview-deep-space-vignette {
+  z-index: 2;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0%, transparent 32%, rgba(0,0,0,0.32) 64%, rgba(0,0,0,0.86) 100%),
+    linear-gradient(90deg, rgba(0,0,0,0.58) 0%, transparent 24%, transparent 74%, rgba(0,0,0,0.52) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0.44) 0%, transparent 26%, transparent 74%, rgba(0,0,0,0.50) 100%);
+}
+
+[data-theme="light"] .overview-deep-space-vignette {
+  background:
+    radial-gradient(circle at 50% 52%, transparent 0%, transparent 40%, rgba(47, 68, 96, 0.16) 72%, rgba(47, 68, 96, 0.34) 100%),
+    linear-gradient(90deg, rgba(47,68,96,0.18) 0%, transparent 24%, transparent 76%, rgba(47,68,96,0.18) 100%);
 }
 
 /* 固定深色面板（如 SettingsPanel）——无论主题如何都保留深色文字 */

@@ -50,6 +50,96 @@ class AnalysisService:
             "variable": variable,
         }
 
+    @staticmethod
+    def _normalize_lng(lng: float) -> float:
+        normalized = ((float(lng) + 180.0) % 360.0) - 180.0
+        return 0.0 if normalized == -0.0 else normalized
+
+    @staticmethod
+    def _longitude_distance(values: np.ndarray, target: float) -> np.ndarray:
+        delta = np.abs(np.asarray(values, dtype=float) - float(target)) % 360.0
+        return np.minimum(delta, 360.0 - delta)
+
+    @staticmethod
+    def _list_with_none(values: np.ndarray) -> list[float | None]:
+        return [float(value) if np.isfinite(value) else None for value in np.asarray(values, dtype=float)]
+
+    def _field_for_variable(self, mars_year: int, variable: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        if variable == "o3col":
+            data = self.data_service.get_openmars_data(mars_year)
+            return (
+                np.asarray(data["o3col"], dtype=np.float32),
+                np.asarray(data["ls"], dtype=np.float32),
+                np.asarray(data["lat"], dtype=np.float32),
+                np.asarray(data["lon"], dtype=np.float32),
+            )
+
+        aligned = self.data_service.get_aligned_mcd_data(mars_year)
+        if variable not in aligned:
+            raise ValueError(f"Variable {variable} is not available")
+        openmars = self.data_service.get_openmars_data(mars_year)
+        return (
+            np.asarray(aligned[variable], dtype=np.float32),
+            np.asarray(aligned["ls"], dtype=np.float32),
+            np.asarray(openmars["lat"], dtype=np.float32),
+            np.asarray(openmars["lon"], dtype=np.float32),
+        )
+
+    def get_point_probe(self, mars_year: int, lat: float, lng: float, ls: float, variable: str = "o3col") -> dict:
+        data_3d, ls_arr, lat_arr, lon_arr = self._field_for_variable(mars_year, variable)
+        if data_3d.ndim != 3:
+            raise ValueError(f"Variable {variable} must be a time/lat/lon field")
+
+        current_idx = self.data_service.get_nearest_ls_index(ls_arr, ls)
+        lon_norm = self._normalize_lng(lng)
+        lon_display = np.asarray([self._normalize_lng(float(value)) for value in lon_arr], dtype=float)
+        lat_distance = np.abs(lat_arr.astype(float) - float(lat))
+        lon_distance = self._longitude_distance(lon_display, lon_norm)
+        grid_distance = lat_distance[:, None] ** 2 + lon_distance[None, :] ** 2
+
+        current_field = np.asarray(data_3d[current_idx], dtype=float)
+        finite_mask = np.isfinite(current_field)
+        if not np.any(finite_mask):
+            raise ValueError(f"MY{mars_year} {variable} has no valid point data near Ls={ls}")
+
+        masked_distance = np.where(finite_mask, grid_distance, np.inf)
+        lat_index, lon_index = np.unravel_index(int(np.argmin(masked_distance)), masked_distance.shape)
+
+        point_series = np.asarray(data_3d[:, lat_index, lon_index], dtype=float)
+        global_series = self._nanmean_no_warn(data_3d, axis=(1, 2))
+        latitude_series = self._nanmean_no_warn(data_3d[:, lat_index, :], axis=1)
+        current_value = point_series[current_idx]
+        current_global_mean = global_series[current_idx]
+        current_latitude_mean = latitude_series[current_idx]
+
+        def delta_from(value: float, baseline: float) -> float | None:
+            if not np.isfinite(value) or not np.isfinite(baseline):
+                return None
+            return float(value - baseline)
+
+        return {
+            "requested": {"lat": float(lat), "lng": float(lon_norm), "ls": float(ls)},
+            "gridPoint": {"lat": float(lat_arr[lat_index]), "lng": float(lon_display[lon_index])},
+            "current": {
+                "ls": float(ls_arr[current_idx]),
+                "value": float(current_value) if np.isfinite(current_value) else None,
+            },
+            "series": {
+                "ls": [float(value) for value in ls_arr],
+                "point": self._list_with_none(point_series),
+                "globalMean": self._list_with_none(global_series),
+                "latitudeMean": self._list_with_none(latitude_series),
+            },
+            "comparison": {
+                "globalMean": float(current_global_mean) if np.isfinite(current_global_mean) else None,
+                "latitudeMean": float(current_latitude_mean) if np.isfinite(current_latitude_mean) else None,
+                "pointMinusGlobal": delta_from(current_value, current_global_mean),
+                "pointMinusLatitudeMean": delta_from(current_value, current_latitude_mean),
+            },
+            "variable": variable,
+            "mars_year": mars_year,
+        }
+
     def get_seasonal_heatmap(self, mars_year: int, variable: str = "o3col") -> dict:
         cache_key = f"heatmap_{mars_year}_{variable}"
         if cache_key in self._cache:

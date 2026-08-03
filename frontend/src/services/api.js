@@ -190,6 +190,17 @@ export async function fetchOverviewOzoneSources(marsYear = 27, ls = 10, options 
   return res.json();
 }
 
+export async function fetchOverviewPointProbe(marsYear = 27, lat = 0, lng = 0, ls = 0, variable = 'o3col', options = {}) {
+  const { signal, ...sourceOptions } = options || {};
+  const url = appendOverviewSource(
+    `${BASE}/explore/overview/point-probe?my=${marsYear}&lat=${lat}&lng=${lng}&ls=${ls}&variable=${encodeURIComponent(variable)}`,
+    sourceOptions,
+  );
+  const res = await authedFetch(url, signal ? { signal } : {});
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
 export async function fetchOverviewSeasonalHeatmap(marsYear = 27, options = {}) {
   const res = await authedFetch(appendOverviewSource(`${BASE}/explore/overview/seasonal-heatmap?my=${marsYear}`, options));
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

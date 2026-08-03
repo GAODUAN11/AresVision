@@ -209,7 +209,7 @@ const en = {
       interactionHint: '• Drag: Rotate sphere\n• Scroll: Zoom\n• Click point: View details\n• ▶: Play the timeline animation',
       dataPoints: 'Data Pts',
       maxVal: 'Max Val',
-      cameraTracking: 'Camera active... One hand: rotate / Two hands: zoom',
+      cameraTracking: 'Camera active... One hand rotate / Two hands zoom / Fist play / Open palm probe',
       gestureErrorTitle: 'Gesture control failed',
       resetLs: 'Reset to Ls=0°',
       longitude: 'Longitude',

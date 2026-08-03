@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchOverviewInfo, fetchOverviewOzoneSources } from './api.js';
+import { fetchOverviewInfo, fetchOverviewOzoneSources, fetchOverviewPointProbe } from './api.js';
 
 function installFetchRecorder() {
   const calls = [];
@@ -27,4 +27,12 @@ test('overview API calls use explicit upload ids instead of legacy data_source',
 
   assert.equal(calls[0], '/api/explore/overview/info?mcd_upload_id=12');
   assert.equal(calls[1], '/api/explore/overview/ozone-sources?my=34&ls=95&openmars_upload_id=45&nomad_upload_id=67');
+});
+
+test('overview point probe API includes click coordinates and uploaded MCD source id', async () => {
+  const calls = installFetchRecorder();
+
+  await fetchOverviewPointProbe(34, 2.25, -176, 11, 'Temperature', { mcdUploadId: 12 });
+
+  assert.equal(calls[0], '/api/explore/overview/point-probe?my=34&lat=2.25&lng=-176&ls=11&variable=Temperature&mcd_upload_id=12');
 });

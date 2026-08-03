@@ -5,6 +5,7 @@ import { getRgb, rdbuRgb } from '../utils/colormaps';
 import { useSettings } from '../contexts/SettingsContext';
 import { buildCanvasFont, normalizeFontScale } from '../utils/fontScale';
 import { buildSeasonalSunLight } from './sphericalLighting';
+import { localPointToLatLng } from './sphericalPicking';
 
 // --- 全局缓存贴图 ---
 let cachedMarsTexture = null;
@@ -223,6 +224,7 @@ const SphericalFieldCanvas = forwardRef(({
   showGeoAnnotations = true,
   offsetX = 0,
   solarLongitudeLs = 0,
+  onGlobeClick,
 }, ref) => {
   const { settings } = useSettings();
   const fontScale = normalizeFontScale(settings.appearance?.uiScale);
@@ -239,6 +241,16 @@ const SphericalFieldCanvas = forwardRef(({
   const geoOverlayRef = useRef(null);
   const marsMeshRef = useRef(null);
   const directionalLightRef = useRef(null);
+  const pickingMeshRef = useRef(null);
+  const onGlobeClickRef = useRef(onGlobeClick);
+  const sceneRef = useRef(null);
+  const cameraRef = useRef(null);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const pointerRef = useRef(new THREE.Vector2());
+
+  useEffect(() => {
+    onGlobeClickRef.current = onGlobeClick;
+  }, [onGlobeClick]);
 
   const addMarsMesh = (globeGroup) => {
     if (!globeGroup || marsMeshRef.current) return;
@@ -271,9 +283,47 @@ const SphericalFieldCanvas = forwardRef(({
     marsMeshRef.current = null;
   };
 
+  const ensurePickingMesh = (globeGroup) => {
+    if (!globeGroup || pickingMeshRef.current) return;
+    const pickingGeometry = new THREE.SphereGeometry(0.9, 64, 64);
+    const pickingMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    const pickingMesh = new THREE.Mesh(pickingGeometry, pickingMaterial);
+    pickingMesh.name = 'globe-picking-sphere';
+    pickingMesh.renderOrder = -1;
+    globeGroup.add(pickingMesh);
+    pickingMeshRef.current = pickingMesh;
+  };
+
   useEffect(() => {
     offsetXRef.current = offsetX;
   }, [offsetX]);
+
+  const pickGlobeAtClientPoint = (clientX, clientY) => {
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const globe = sphereMeshRef.current;
+    const pickingMesh = pickingMeshRef.current;
+    if (!renderer || !camera || !globe || !pickingMesh) return null;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const xRatio = (clientX - rect.left) / rect.width;
+    const yRatio = (clientY - rect.top) / rect.height;
+    if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return null;
+
+    const pointer = pointerRef.current;
+    pointer.x = xRatio * 2 - 1;
+    pointer.y = -(yRatio * 2 - 1);
+    raycasterRef.current.setFromCamera(pointer, camera);
+    const [hit] = raycasterRef.current.intersectObject(pickingMesh, false);
+    if (!hit) return null;
+
+    const localPoint = globe.worldToLocal(hit.point.clone());
+    return localPointToLatLng(localPoint);
+  };
 
   // Expose imperative API for gesture control
   useImperativeHandle(ref, () => ({
@@ -303,16 +353,14 @@ const SphericalFieldCanvas = forwardRef(({
         const newDist = Math.max(1.2, Math.min(12.0, currentDist + step));
         cameraRef.current.position.setLength(newDist);
       }
-    }
+    },
+    pickGlobeAtClientPoint: (clientX, clientY) => pickGlobeAtClientPoint(clientX, clientY),
   }));
 
   // Update ref when prop changes so animation loop catches it
   useEffect(() => {
     autoRotateRef.current = autoRotate;
   }, [autoRotate]);
-
-  const sceneRef = useRef(null);
-  const cameraRef = useRef(null);
 
   // 1. 初始化 Three.js 场景、相机、渲染器和控制器（仅执行一次）
   useEffect(() => {
@@ -359,6 +407,30 @@ const SphericalFieldCanvas = forwardRef(({
     controls.target.set(0, 0, 0);
 
     controlsRef.current = controls;
+
+    let pointerStart = null;
+
+    const handlePointerDown = (event) => {
+      if (event.button !== 0) return;
+      pointerStart = { x: event.clientX, y: event.clientY, time: performance.now() };
+    };
+
+    const handlePointerUp = (event) => {
+      if (event.button !== 0 || !pointerStart || !cameraRef.current || !sphereMeshRef.current || !pickingMeshRef.current) {
+        pointerStart = null;
+        return;
+      }
+      const moved = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+      const elapsed = performance.now() - pointerStart.time;
+      pointerStart = null;
+      if (moved > 5 || elapsed > 850 || typeof onGlobeClickRef.current !== 'function') return;
+
+      const coord = pickGlobeAtClientPoint(event.clientX, event.clientY);
+      if (coord) onGlobeClickRef.current(coord);
+    };
+
+    renderer.domElement.addEventListener('pointerdown', handlePointerDown);
+    renderer.domElement.addEventListener('pointerup', handlePointerUp);
 
     // 光照对于 Points 材质不生效，但可用于内部火星球体
     const ambientLight = new THREE.AmbientLight(0xffffff, isLight ? 0.8 : 0.2);
@@ -437,6 +509,8 @@ const SphericalFieldCanvas = forwardRef(({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
+      renderer.domElement.removeEventListener('pointerup', handlePointerUp);
       cancelAnimationFrame(reqId);
       if (rendererRef.current) {
         rendererRef.current.dispose();
@@ -861,9 +935,16 @@ const SphericalFieldCanvas = forwardRef(({
         geoOverlayRef.current = null;
         marsMeshRef.current = null;
         directionalLightRef.current = null;
+        pickingMeshRef.current = null;
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (sphereMeshRef.current) {
+      ensurePickingMesh(sphereMeshRef.current);
+    }
+  }, [fieldData, fieldLayers, showConcentration, showMars]);
 
   if (forceFullscreen) {
     return (

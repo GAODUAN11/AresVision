@@ -210,7 +210,7 @@ const zh = {
       interactionHint: '• 拖拽：旋转火星球体\n• 滚轮：缩放视图\n• 点击数据点：查看详情\n• ▶：播放时序动画',
       dataPoints: '数据点',
       maxVal: '最大值',
-      cameraTracking: '摄像头追踪中... 单手拖拽 / 双手缩放',
+      cameraTracking: '摄像头追踪中... 单手旋转 / 双手缩放 / 握拳播放 / 张掌选点',
       gestureErrorTitle: '手势控制启动失败',
       resetLs: '重置到 Ls=0°',
       longitude: '经度',

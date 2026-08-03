@@ -17,6 +17,7 @@ from schemas.explore import (
     HeatmapResponse,
     OverviewInfoResponse,
     OverviewOzoneSourcesResponse,
+    PointProbeResponse,
     SeasonalBandsResponse,
 )
 from services.analysis_service import AnalysisService
@@ -225,6 +226,12 @@ async def get_overview_info(
             resolved_year = int(record.mars_year or DEFAULT_MARS_YEAR)
             view = UserMcdOverviewDataView(upload_id=record.id, mars_year=resolved_year, data=data)
             ls_min, ls_max = view.get_ls_range(resolved_year)
+            official_capabilities = dict(request.app.state.mcd_overview_service.get_ozone_capabilities())
+            coverage = dict(official_capabilities.get("coverage") or {})
+            coverage["mcd"] = {
+                str(resolved_year): [{"start": float(ls_min), "end": float(ls_max)}]
+            }
+            official_capabilities["coverage"] = coverage
             return {
                 "available_years": [resolved_year],
                 "timeline": {
@@ -232,12 +239,7 @@ async def get_overview_info(
                     "max": float(ls_max),
                     "step": 5.0,
                 },
-                "ozone_capabilities": {
-                    "openmars": True,
-                    "nomad": True,
-                    "diff_pairs": ["MCD-OpenMARS", "MCD-NOMAD"],
-                    "coverage": {},
-                },
+                "ozone_capabilities": official_capabilities,
                 "source_meta": _uploaded_source_meta(record, "user_mcd"),
             }
 
@@ -284,6 +286,32 @@ async def get_overview_globe_data(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"MCD 总览球体数据处理错误: {exc}")
+
+@router.get("/overview/point-probe", response_model=PointProbeResponse)
+async def get_overview_point_probe(
+    request: Request,
+    my: int = Query(DEFAULT_MARS_YEAR, description="Mars year"),
+    lat: float = Query(..., ge=-90, le=90, description="Clicked latitude"),
+    lng: float = Query(..., ge=-180, le=180, description="Clicked longitude"),
+    ls: float = Query(0.0, ge=0, le=360, description="Solar longitude Ls"),
+    variable: str = Query("o3col", description="Display variable", enum=["o3col"] + OVERVIEW_MCD_VARIABLES),
+    data_source: str = Query("default", description="default"),
+    mcd_upload_id: int | None = Query(None, ge=1),
+    current_user: User | None = Depends(get_optional_user),
+):
+    try:
+        variable = _validate_overview_variable(variable, include_ozone=True)
+        service, source_meta, resolved_year = await _resolve_overview_context(
+            request, my, data_source, current_user, mcd_upload_id
+        )
+        result = service.get_point_probe(resolved_year, lat, lng, ls, variable=variable)
+        return _with_source_meta(result, source_meta)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"MCD point probe processing error: {exc}")
 
 
 @router.get("/overview/seasonal-heatmap", response_model=HeatmapResponse)

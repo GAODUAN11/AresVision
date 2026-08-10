@@ -605,7 +605,6 @@ export default function ModelTrainingPage() {
 
   const copy = useMemo(
     () => ({
-      dataSource: isZh ? '数据源' : 'Data source',
       trainingDataset: isZh ? '训练数据集' : 'Training dataset',
       datasetOpenMarsMcd: isZh ? 'OpenMARS + MCD 融合' : 'OpenMARS + MCD',
       datasetMcdOverview: isZh ? 'MCD 全量 MY24-MY35' : 'Full MCD MY24-MY35',
@@ -1553,26 +1552,7 @@ export default function ModelTrainingPage() {
               </div>
 
               <div style={{ ...summaryCardStyle, padding: '16px 16px 14px' }}>
-                <div style={{ ...sectionTitleStyle, marginBottom: 12 }}>{copy.dataSource}</div>
-                <div
-                  style={{
-                    minHeight: 40,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 12px',
-                    borderRadius: 14,
-                    background: isLight ? 'rgba(74,158,255,0.12)' : 'rgba(74,158,255,0.08)',
-                    border: `1px solid ${C.border}`,
-                    color: C.blue,
-                    fontSize: 'calc(12px * var(--font-scale, 1))',
-                    fontWeight: 800,
-                    marginBottom: 10,
-                  }}
-                >
-                  {copy.sourceDefault}
-                </div>
-                <div style={{ ...fieldHintStyle, marginTop: 0 }}>{copy.sourceHintDefault}</div>
-                <div style={{ ...sectionTitleStyle, marginTop: 16, marginBottom: 12 }}>{copy.trainingDataset}</div>
+                <div style={{ ...sectionTitleStyle, marginBottom: 12 }}>{copy.trainingDataset}</div>
                 <div
                   style={{
                     display: 'grid',

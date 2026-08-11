@@ -1,8 +1,9 @@
 import os
 import glob
+from pathlib import Path
 
 # 路径指向后端模型训练脚本目录
-script_dir = r"D:\AApycharm\AresVision\AresVision_backend\backend\models\训练模型"
+script_dir = Path(__file__).resolve().parents[1] / "models" / "training_scripts"
 pattern = os.path.join(script_dir, "demo3-*.py")
 
 files = glob.glob(pattern)

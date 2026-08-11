@@ -9,7 +9,7 @@ import torch.nn as nn
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = BACKEND_DIR / "models" / "训练模型" / "demo3.py"
+SCRIPT_PATH = BACKEND_DIR / "models" / "training_scripts" / "demo3.py"
 
 
 def load_demo3_module():

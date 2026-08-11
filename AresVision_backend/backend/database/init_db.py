@@ -6,10 +6,11 @@ Database bootstrap:
 """
 
 import logging
+from pathlib import Path
 
 from sqlalchemy import select, text
 
-from config import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD
+from config import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD, TRAINING_RESULTS_DIR
 from database.engine import Base, engine, async_session_maker
 from database.models import (
     User,
@@ -21,6 +22,7 @@ from database.models import (
     DatasetLineageEvent,
     DatasetQualitySnapshot,
 )  # noqa: F401
+from services.training_paths import build_task_output_path
 
 logger = logging.getLogger("aresvision.db")
 
@@ -71,6 +73,78 @@ async def _patch_personal_source_build_state_columns(conn) -> None:
             )
 
 
+async def migrate_training_task_output_paths(
+    sessionmaker=async_session_maker,
+    results_dir: Path = TRAINING_RESULTS_DIR,
+) -> int:
+    """Move historical weights and rewrite task paths to the English directory."""
+    destination_root = Path(results_dir).resolve()
+    destination_root.mkdir(parents=True, exist_ok=True)
+
+    async with sessionmaker() as session:
+        result = await session.execute(select(ModelTrainingTask))
+        migration_plan = []
+
+        for task in result.scalars().all():
+            if not task.output_model_path:
+                continue
+
+            source = Path(task.output_model_path).expanduser()
+            destination = build_task_output_path(
+                task.id,
+                task.custom_model_name,
+                results_dir=destination_root,
+            ).resolve()
+            if source.resolve() == destination:
+                continue
+
+            if destination.exists():
+                raise FileExistsError(f"Training path migration conflict: {destination}")
+
+            migration_plan.append((task, source, destination, source.is_file()))
+
+        moved_files = []
+        try:
+            for task, source, destination, source_exists in migration_plan:
+                if source_exists:
+                    source.replace(destination)
+                    moved_files.append((source, destination))
+                task.output_model_path = str(destination)
+
+            await session.commit()
+        except Exception as migration_error:
+            rollback_errors = []
+
+            try:
+                await session.rollback()
+            except Exception as rollback_error:
+                rollback_errors.append(
+                    f"Database rollback failed: {rollback_error}"
+                )
+
+            for source, destination in reversed(moved_files):
+                try:
+                    if destination.is_file() and not source.exists():
+                        source.parent.mkdir(parents=True, exist_ok=True)
+                        destination.replace(source)
+                    else:
+                        rollback_errors.append(
+                            f"Cannot restore {destination} to {source}"
+                        )
+                except Exception as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+
+            if rollback_errors:
+                details = "; ".join(rollback_errors)
+                raise RuntimeError(
+                    "Training path migration failed and file rollback was "
+                    f"incomplete: {details}"
+                ) from migration_error
+            raise
+
+    return len(migration_plan)
+
+
 async def init_database() -> None:
     from auth.security import hash_password
 
@@ -87,6 +161,10 @@ async def init_database() -> None:
                 logger.warning("Could not auto-patch personal_source_build_states schema: %s", exc)
 
         logger.info("Database schema initialization complete")
+
+        migrated_paths = await migrate_training_task_output_paths()
+        if migrated_paths:
+            logger.info("Migrated %s historical training output paths", migrated_paths)
 
         async with async_session_maker() as session:
             result = await session.execute(select(User).limit(1))

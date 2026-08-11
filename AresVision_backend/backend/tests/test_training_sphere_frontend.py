@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "models" / "训练模型" / "demo3.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "models" / "training_scripts" / "demo3.py"
 
 
 def load_demo3_module():

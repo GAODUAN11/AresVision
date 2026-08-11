@@ -7,7 +7,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "aresvision.db"
 LOGS_DIR = BASE_DIR / "logs" / "training"
-OUTPUT_MODELS_DIR = BASE_DIR / "models" / "训练结果"
+OUTPUT_MODELS_DIR = BASE_DIR / "models" / "training_results"
 
 def clear_all_training_data():
     print("--- 正在启动后台训练数据清理程序 ---")

@@ -389,7 +389,7 @@ def train_and_evaluate(label, use_phase_warp, train_loader, test_loader, device,
     model = GridPointInformerO3(seq_len=window, pred_len=horizon, lat_size=lat_size, lon_size=lon_size, use_phase_warp=use_phase_warp, d_model=d_model, n_heads=n_heads, e_layers=e_layers, d_ff=d_ff, dropout=dropout).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.SmoothL1Loss()
-    checkpoint_path = os.path.join(base_dir, 'models', '训练结果', f'{label.lower()}_checkpoint.pth')
+    checkpoint_path = os.path.join(base_dir, 'models', 'training_results', f'{label.lower()}_checkpoint.pth')
     early_stopping = EarlyStopping(patience=early_stopping_patience, verbose=True, path=checkpoint_path)
     for epoch_idx in range(epochs):
         model.train()
@@ -423,7 +423,7 @@ def train_and_evaluate(label, use_phase_warp, train_loader, test_loader, device,
             break
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     metrics = evaluate_metrics(model, test_loader, device, y_std, y_mean)
-    save_path = os.path.join(base_dir, 'models', '训练结果', f'{label.lower()}.pth')
+    save_path = os.path.join(base_dir, 'models', 'training_results', f'{label.lower()}.pth')
     torch.save(model.state_dict(), save_path)
     print(f'{label} weights saved to: {save_path}')
     print(f"{label} Metrics | RMSE: {metrics['rmse']:.4f} | MAE: {metrics['mae']:.4f} | R^2: {metrics['r2']:.4f} | SMAPE: {metrics['smape']:.2%}")
@@ -431,9 +431,9 @@ def train_and_evaluate(label, use_phase_warp, train_loader, test_loader, device,
 
 def main():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    os.makedirs(os.path.join(base_dir, 'models', '训练过程'), exist_ok=True)
-    os.makedirs(os.path.join(base_dir, 'models', '训练结果'), exist_ok=True)
-    sys.stdout = Logger(os.path.join(base_dir, 'models', '训练过程', 'Informer_PhaseWarp_Compare.txt'))
+    os.makedirs(os.path.join(base_dir, 'models', 'training_logs'), exist_ok=True)
+    os.makedirs(os.path.join(base_dir, 'models', 'training_results'), exist_ok=True)
+    sys.stdout = Logger(os.path.join(base_dir, 'models', 'training_logs', 'Informer_PhaseWarp_Compare.txt'))
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Training Device: {device}')
     window = 3

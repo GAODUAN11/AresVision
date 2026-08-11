@@ -20,7 +20,12 @@ import numpy as np
 import netCDF4 as nc
 from sqlalchemy import select, update
 
-from config import USER_UPLOADS_DIR, MCD_VARIABLES
+from config import (
+    MCD_VARIABLES,
+    TRAINING_RESULTS_DIR,
+    TRAINING_SCRIPTS_DIR,
+    USER_UPLOADS_DIR,
+)
 from database.engine import async_session_maker
 from database.models import ModelTrainingTask
 from services.data_service import DataService
@@ -31,14 +36,15 @@ from services.training_channels import (
     build_hyperparameter_args,
     normalize_training_hyperparameters,
 )
+from services.training_paths import build_task_output_path
 import config
 
 logger = logging.getLogger("aresvision.training")
 
-MODELS_DIR = Path(__file__).parent.parent / "models" / "训练模型"
+MODELS_DIR = TRAINING_SCRIPTS_DIR
 LOGS_DIR = Path(__file__).parent.parent / "logs" / "training"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_MODELS_DIR = Path(__file__).parent.parent / "models" / "训练结果"
+OUTPUT_MODELS_DIR = TRAINING_RESULTS_DIR
 OUTPUT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -152,9 +158,11 @@ class TrainingService:
             task_id = task.id
             log_file = LOGS_DIR / f"task_{task_id}.log"
 
-            safe_name = re.sub(r"[^\w\-]", "_", custom_model_name)
-            output_filename = f"task_{task_id}_{safe_name}.pth"
-            output_path = OUTPUT_MODELS_DIR / output_filename
+            output_path = build_task_output_path(
+                task_id,
+                custom_model_name,
+                results_dir=OUTPUT_MODELS_DIR,
+            )
 
             task.log_file_path = str(log_file)
             task.output_model_path = str(output_path)

@@ -21,6 +21,9 @@ MCD_RAW_3H_DIR = Path(os.getenv(
 ))
 NOMAD_DIR = DATA_DIR / "nomad"
 MODEL_DIR = BASE_DIR / "models" / "predrnnv2"
+TRAINING_SCRIPTS_DIR = BASE_DIR / "models" / "training_scripts"
+TRAINING_RESULTS_DIR = BASE_DIR / "models" / "training_results"
+TRAINING_LOGS_DIR = BASE_DIR / "models" / "training_logs"
 PERF_CACHE_DIR = DATA_DIR / "perf_cache"
 PERSONAL_CACHE_DIR = DATA_DIR / "personal_cache"
 

@@ -44,7 +44,7 @@ def _load_demo3_module():
     sys.modules["sklearn.metrics"] = sklearn_metrics
     sys.modules["sklearn.preprocessing"] = sklearn_preprocessing
 
-    script_path = BACKEND_DIR / "models" / "训练模型" / "demo3.py"
+    script_path = BACKEND_DIR / "models" / "training_scripts" / "demo3.py"
     spec = importlib.util.spec_from_file_location("aresvision_demo3_training_loader", script_path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

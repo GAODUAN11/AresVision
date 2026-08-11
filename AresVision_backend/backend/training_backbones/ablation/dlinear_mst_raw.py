@@ -137,7 +137,7 @@ def train_and_evaluate(label, train_loader, test_loader, device, y_std, y_mean, 
     model = DLinearMSTForecaster(seq_len=window, pred_len=horizon, lat_size=lat_size, lon_size=lon_size, input_channels=5, linear_hidden_layers=linear_hidden_layers, mst_spatial_hidden_dim=mst_spatial_hidden_dim, mst_temporal_hidden_dim=mst_temporal_hidden_dim, mst_num_downsample=mst_num_downsample, mst_temporal_depth=mst_temporal_depth, dropout=dropout).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.SmoothL1Loss()
-    checkpoint_path = os.path.join(base_dir, 'models', '训练结果', f'{label.lower()}_checkpoint.pth')
+    checkpoint_path = os.path.join(base_dir, 'models', 'training_results', f'{label.lower()}_checkpoint.pth')
     early_stopping = EarlyStopping(patience=early_stopping_patience, verbose=True, path=checkpoint_path)
     for epoch_idx in range(epochs):
         model.train()
@@ -172,7 +172,7 @@ def train_and_evaluate(label, train_loader, test_loader, device, y_std, y_mean, 
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     metrics = evaluate_metrics(model, test_loader, device, y_std, y_mean)
     baseline_weight = torch.sigmoid(model.mst_block.residual_logit).item()
-    save_path = os.path.join(base_dir, 'models', '训练结果', f'{label.lower()}.pth')
+    save_path = os.path.join(base_dir, 'models', 'training_results', f'{label.lower()}.pth')
     torch.save(model.state_dict(), save_path)
     print(f'{label} weights saved to: {save_path}')
     print(f'{label} learned DLinear baseline fusion weight: {baseline_weight:.4f}')
@@ -181,9 +181,9 @@ def train_and_evaluate(label, train_loader, test_loader, device, y_std, y_mean, 
 
 def main():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    os.makedirs(os.path.join(base_dir, 'models', '训练过程'), exist_ok=True)
-    os.makedirs(os.path.join(base_dir, 'models', '训练结果'), exist_ok=True)
-    sys.stdout = Logger(os.path.join(base_dir, 'models', '训练过程', 'DLinear_MST_Raw.txt'))
+    os.makedirs(os.path.join(base_dir, 'models', 'training_logs'), exist_ok=True)
+    os.makedirs(os.path.join(base_dir, 'models', 'training_results'), exist_ok=True)
+    sys.stdout = Logger(os.path.join(base_dir, 'models', 'training_logs', 'DLinear_MST_Raw.txt'))
     seed = 11
     set_experiment_seed(seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

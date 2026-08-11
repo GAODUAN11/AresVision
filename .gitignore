@@ -60,8 +60,8 @@ AresVision_backend/backend/logs/
 
 # Model weights and generated training outputs
 AresVision_backend/backend/models/predrnnv2/
-AresVision_backend/backend/models/训练结果/
-AresVision_backend/backend/models/训练过程/
+AresVision_backend/backend/models/training_results/
+AresVision_backend/backend/models/training_logs/
 AresVision_backend/backend/models/**/__pycache__/
 *.pth
 *.pt

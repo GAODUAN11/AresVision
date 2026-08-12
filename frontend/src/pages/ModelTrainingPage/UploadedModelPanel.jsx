@@ -46,6 +46,7 @@ export default function UploadedModelPanel({
   onDelete,
   uploading = false,
   busy = false,
+  selectionDisabled = false,
   guideDownloadUrl,
   templateDownloadUrl,
   labels,
@@ -151,6 +152,7 @@ export default function UploadedModelPanel({
                 key={model.id}
                 type="button"
                 onClick={() => onSelect(model.id)}
+                disabled={selectionDisabled}
                 style={{
                   textAlign: 'left',
                   padding: '10px 12px',
@@ -158,7 +160,8 @@ export default function UploadedModelPanel({
                   border: `1px solid ${active ? 'rgba(74,158,255,0.28)' : C.border}`,
                   background: active ? 'rgba(74,158,255,0.10)' : C.bgMuted,
                   color: C.ice,
-                  cursor: 'pointer',
+                  cursor: selectionDisabled ? 'not-allowed' : 'pointer',
+                  opacity: selectionDisabled ? 0.6 : 1,
                   fontFamily: 'var(--font-body)',
                 }}
               >

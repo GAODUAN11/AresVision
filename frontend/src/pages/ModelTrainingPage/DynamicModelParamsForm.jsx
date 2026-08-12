@@ -26,6 +26,7 @@ export default function DynamicModelParamsForm({
   fieldLabelStyle,
   fieldHintStyle,
   inputStyle,
+  disabled = false,
 }) {
   const fields = Object.entries(schema || {});
 
@@ -73,7 +74,8 @@ export default function DynamicModelParamsForm({
                   borderRadius: 12,
                   border: `1px solid ${error ? '#d95c5c' : C.border}`,
                   background: C.bgMuted,
-                  cursor: 'pointer',
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  opacity: disabled ? 0.6 : 1,
                 }}
               >
                 <span style={{ minWidth: 0 }}>
@@ -116,6 +118,7 @@ export default function DynamicModelParamsForm({
                 <input
                   type="checkbox"
                   checked={checked}
+                  disabled={disabled}
                   onChange={(event) => onChange(key, event.target.checked)}
                   style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
                 />
@@ -133,6 +136,7 @@ export default function DynamicModelParamsForm({
                     borderColor: error ? '#d95c5c' : inputStyle.borderColor || C.border,
                   }}
                   value={value}
+                  disabled={disabled}
                   onChange={(event) => onChange(key, event.target.value)}
                 >
                   {(field.options || []).map((option) => (
@@ -149,6 +153,7 @@ export default function DynamicModelParamsForm({
                     borderColor: error ? '#d95c5c' : inputStyle.borderColor || C.border,
                   }}
                   value={value}
+                  disabled={disabled}
                   min={Number.isFinite(field.min) ? field.min : undefined}
                   max={Number.isFinite(field.max) ? field.max : undefined}
                   step={getStep(field)}

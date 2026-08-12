@@ -57,6 +57,12 @@ import {
   getTrainingRequestDataSource,
   getTrainingSourceLabel,
 } from './ModelTrainingPage/trainingDataSource';
+import {
+  applyTransferStructureConfig,
+  captureTransferStructureSnapshot,
+  hasTransferSourceTask,
+  readTransferSourceTaskConfig,
+} from './ModelTrainingPage/transferSourceConfig';
 
 const MONO_FONT = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
 const UNIFIED_TRAINING_SCRIPT = 'demo3.py';
@@ -706,6 +712,18 @@ export default function ModelTrainingPage() {
       freezeHead: isZh ? '只训练输出头' : 'Train head only',
       finetuneLearningRate: isZh ? '微调学习率' : 'Fine-tune LR',
       transferSelectSource: isZh ? '请选择迁移学习来源。' : 'Select a transfer learning source.',
+      transferConfigSynced: isZh
+        ? '模型结构参数已与来源任务同步并锁定。'
+        : 'Model structure parameters are synchronized with the source task and locked.',
+      transferConfigUnreadable: isZh
+        ? '无法读取来源任务的模型配置。'
+        : 'The source task model configuration could not be read.',
+      transferConfigIncomplete: isZh
+        ? '来源任务的模型配置不完整，无法自动应用。'
+        : 'The source task model configuration is incomplete and cannot be applied.',
+      transferUploadedModelUnavailable: isZh
+        ? '来源任务使用的上传模型或版本当前不可用。'
+        : 'The uploaded model or version used by the source task is unavailable.',
       uploadWeightSuccess: isZh ? '权重已上传' : 'Weight uploaded',
       uploadWeightError: isZh ? '权重上传失败' : 'Weight upload failed',
       deleteWeightSuccess: isZh ? '权重已删除' : 'Weight deleted',
@@ -783,6 +801,8 @@ export default function ModelTrainingPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [architecturePickerOpen, setArchitecturePickerOpen] = useState(false);
+  const transferStructureSnapshotRef = useRef(null);
+  const restoredCustomModelParamsRef = useRef(null);
 
   const modelNameLabel = String(t('modelTraining.modelName') || '')
     .replace(':', '')
@@ -832,6 +852,8 @@ export default function ModelTrainingPage() {
     transferEnabled &&
     ((transferSourceType === 'task' && !transferSourceTaskId) ||
       (transferSourceType === 'upload' && (!selectedTrainingWeight || selectedTrainingWeight.status !== 'ready')));
+  const transferStructureLocked =
+    transferEnabled && transferSourceType === 'task' && Boolean(transferSourceTaskId);
 
   const activeStatusMeta = getStatusMeta(activeTask?.status || 'idle', t);
   const normalizedModelArchitecture = normalizeModelArchitecture(modelArchitecture);
@@ -985,6 +1007,96 @@ export default function ModelTrainingPage() {
     }));
   };
 
+  const getCurrentTransferStructure = () => ({
+    modelSource,
+    selectedUploadedModelId,
+    customModelParams,
+    selectedChannels,
+    modelArchitecture,
+    useSphere,
+    hiddenDims,
+    stlstmLayers,
+    architectureParamsByModel,
+    windowValue: window_,
+    horizon,
+  });
+
+  const applyTransferStructureState = (structure, { restoring = false } = {}) => {
+    if (restoring && structure.selectedUploadedModelId !== selectedUploadedModelId) {
+      restoredCustomModelParamsRef.current = {
+        modelId: structure.selectedUploadedModelId,
+        params: captureTransferStructureSnapshot(structure.customModelParams),
+      };
+    }
+    setModelSource(structure.modelSource);
+    setSelectedUploadedModelId(structure.selectedUploadedModelId);
+    setCustomModelParams(captureTransferStructureSnapshot(structure.customModelParams));
+    setCustomModelParamErrors({});
+    setSelectedChannels([...structure.selectedChannels]);
+    setModelArchitecture(structure.modelArchitecture);
+    setUseSphere(structure.useSphere);
+    setHiddenDims([...structure.hiddenDims]);
+    setStlstmLayers(structure.stlstmLayers);
+    setArchitectureParamsByModel(captureTransferStructureSnapshot(structure.architectureParamsByModel));
+    setWindow(structure.windowValue);
+    setHorizon(structure.horizon);
+  };
+
+  const restoreTransferStructureSnapshot = () => {
+    const snapshot = transferStructureSnapshotRef.current;
+    if (!snapshot) return;
+    applyTransferStructureState(snapshot, { restoring: true });
+    transferStructureSnapshotRef.current = null;
+  };
+
+  const handleTransferEnabledChange = (enabled) => {
+    if (!enabled) {
+      restoreTransferStructureSnapshot();
+      setTransferSourceTaskId('');
+    }
+    setTransferEnabled(enabled);
+  };
+
+  const handleTransferSourceTypeChange = (sourceType) => {
+    if (sourceType === transferSourceType) return;
+    if (sourceType === 'upload') {
+      restoreTransferStructureSnapshot();
+      setTransferSourceTaskId('');
+    }
+    setTransferSourceType(sourceType);
+  };
+
+  const handleTransferSourceTaskChange = (taskId) => {
+    if (!taskId) {
+      restoreTransferStructureSnapshot();
+      setTransferSourceTaskId('');
+      return;
+    }
+
+    const sourceTask = completedTransferTasks.find((task) => String(task.id) === String(taskId));
+    if (!sourceTask) {
+      showToast(copy.transferConfigUnreadable, 'error');
+      return;
+    }
+
+    try {
+      const sourceConfig = readTransferSourceTaskConfig(sourceTask, { channelOrder, uploadedModels });
+      const currentStructure = getCurrentTransferStructure();
+      if (!transferStructureSnapshotRef.current) {
+        transferStructureSnapshotRef.current = captureTransferStructureSnapshot(currentStructure);
+      }
+      applyTransferStructureState(applyTransferStructureConfig(currentStructure, sourceConfig));
+      setTransferSourceTaskId(String(taskId));
+    } catch (error) {
+      const message = error?.code === 'unavailable'
+        ? copy.transferUploadedModelUnavailable
+        : error?.code === 'incomplete'
+          ? copy.transferConfigIncomplete
+          : copy.transferConfigUnreadable;
+      showToast(message, 'error');
+    }
+  };
+
   useEffect(() => {
     if (!user) {
       setScripts([]);
@@ -1104,9 +1216,23 @@ export default function ModelTrainingPage() {
   }, [user]);
 
   useEffect(() => {
+    const restored = restoredCustomModelParamsRef.current;
+    if (restored && restored.modelId === selectedUploadedModelId) {
+      setCustomModelParams(captureTransferStructureSnapshot(restored.params));
+      setCustomModelParamErrors({});
+      restoredCustomModelParamsRef.current = null;
+      return;
+    }
+    if (transferStructureLocked) return;
     setCustomModelParams(createDefaultCustomModelParams(selectedUploadedParamSchema));
     setCustomModelParamErrors({});
   }, [selectedUploadedModelId, selectedUploadedParamSchema]);
+
+  useEffect(() => {
+    if (!transferStructureLocked || hasTransferSourceTask(completedTransferTasks, transferSourceTaskId)) return;
+    restoreTransferStructureSnapshot();
+    setTransferSourceTaskId('');
+  }, [completedTransferTasks, transferSourceTaskId, transferStructureLocked]);
 
   const refreshUploadedModels = async (preferredId = selectedUploadedModelId) => {
     const payload = await fetchUserModels();
@@ -1610,7 +1736,7 @@ export default function ModelTrainingPage() {
                     uploadedHint: copy.modelSourceUploadedHint,
                   }}
                   isLight={isLight}
-                  disabled={!user}
+                  disabled={!user || transferStructureLocked}
                   sectionTitleStyle={sectionTitleStyle}
                   fieldHintStyle={fieldHintStyle}
                 />
@@ -1626,7 +1752,8 @@ export default function ModelTrainingPage() {
                     onRevalidate={handleRevalidateModel}
                     onDelete={handleDeleteUploadedModel}
                     uploading={uploadingModel}
-                    busy={isProcessing}
+                    busy={isProcessing || transferStructureLocked}
+                    selectionDisabled={transferStructureLocked}
                     guideDownloadUrl={getUserModelDownloadUrl('guide')}
                     templateDownloadUrl={getUserModelDownloadUrl('template')}
                     labels={{
@@ -1659,6 +1786,7 @@ export default function ModelTrainingPage() {
                     values={customModelParams}
                     errors={visibleCustomModelParamErrors}
                     onChange={handleCustomModelParamChange}
+                    disabled={transferStructureLocked}
                     labels={{
                       title: copy.customModelParams,
                       empty: copy.customModelParamsEmpty,
@@ -1738,6 +1866,7 @@ export default function ModelTrainingPage() {
                       return (
                         <button
                           key={channel}
+                          disabled={transferStructureLocked}
                           onClick={() => {
                             setSelectedChannels((previous) =>
                               active
@@ -1753,7 +1882,8 @@ export default function ModelTrainingPage() {
                             color: active ? C.mars : C.ice,
                             fontSize: 'calc(11px * var(--font-scale, 1))',
                             fontWeight: 700,
-                            cursor: 'pointer',
+                            cursor: transferStructureLocked ? 'not-allowed' : 'pointer',
+                            opacity: transferStructureLocked ? 0.55 : 1,
                             textAlign: 'center',
                           }}
                         >
@@ -1821,7 +1951,7 @@ export default function ModelTrainingPage() {
                       <input
                         type="checkbox"
                         checked={transferEnabled}
-                        onChange={(event) => setTransferEnabled(event.target.checked)}
+                        onChange={(event) => handleTransferEnabledChange(event.target.checked)}
                       />
                       {copy.transferEnable}
                     </label>
@@ -1837,7 +1967,7 @@ export default function ModelTrainingPage() {
                           <button
                             key={value}
                             type="button"
-                            onClick={() => setTransferSourceType(value)}
+                            onClick={() => handleTransferSourceTypeChange(value)}
                             style={{
                               padding: '8px 12px',
                               borderRadius: 10,
@@ -1860,7 +1990,7 @@ export default function ModelTrainingPage() {
                           <select
                             style={inputStyle}
                             value={transferSourceTaskId}
-                            onChange={(event) => setTransferSourceTaskId(event.target.value)}
+                            onChange={(event) => handleTransferSourceTaskChange(event.target.value)}
                           >
                             <option value="">{copy.transferNoTasks}</option>
                             {completedTransferTasks.map((task) => (
@@ -1869,6 +1999,11 @@ export default function ModelTrainingPage() {
                               </option>
                             ))}
                           </select>
+                          {transferStructureLocked ? (
+                            <div style={{ ...fieldHintStyle, color: C.green }}>
+                              {copy.transferConfigSynced}
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <div style={{ display: 'grid', gap: 10 }}>
@@ -2028,6 +2163,7 @@ export default function ModelTrainingPage() {
                         return (
                           <button
                             key={architecture.id}
+                            disabled={transferStructureLocked}
                             onClick={() => {
                               setModelArchitecture(architecture.id);
                               setArchitecturePickerOpen(false);
@@ -2040,7 +2176,8 @@ export default function ModelTrainingPage() {
                               color: active ? C.blue : C.ice,
                               fontSize: 'calc(11px * var(--font-scale, 1))',
                               fontWeight: 700,
-                              cursor: 'pointer',
+                              cursor: transferStructureLocked ? 'not-allowed' : 'pointer',
+                              opacity: transferStructureLocked ? 0.55 : 1,
                               textAlign: 'left',
                               minHeight: 44,
                             }}
@@ -2054,6 +2191,7 @@ export default function ModelTrainingPage() {
                   <button
                     type="button"
                     onClick={() => setUseSphere((value) => !value)}
+                    disabled={transferStructureLocked}
                     style={{
                       marginTop: 12,
                       width: '100%',
@@ -2064,7 +2202,8 @@ export default function ModelTrainingPage() {
                       color: useSphere ? C.blue : C.ice,
                       fontSize: 'calc(20px * var(--font-scale, 1))',
                       fontWeight: 700,
-                      cursor: 'pointer',
+                      cursor: transferStructureLocked ? 'not-allowed' : 'pointer',
+                      opacity: transferStructureLocked ? 0.55 : 1,
                       textAlign: 'center',
                     }}
                   >
@@ -2121,6 +2260,7 @@ export default function ModelTrainingPage() {
                       type="number"
                       style={inputStyle}
                       value={window_}
+                      disabled={transferStructureLocked}
                       min="1"
                       max="30"
                       onChange={(event) =>
@@ -2138,6 +2278,7 @@ export default function ModelTrainingPage() {
                       type="number"
                       style={inputStyle}
                       value={horizon}
+                      disabled={transferStructureLocked}
                       min="1"
                       max="30"
                       onChange={(event) =>
@@ -2246,6 +2387,7 @@ export default function ModelTrainingPage() {
                                   type="number"
                                   style={inputStyle}
                                   value={stlstmLayers}
+                                  disabled={transferStructureLocked}
                                   onChange={handleLayersChange}
                                   min="1"
                                   max="10"
@@ -2264,6 +2406,7 @@ export default function ModelTrainingPage() {
                                       type="number"
                                       style={inputStyle}
                                       value={dim}
+                                      disabled={transferStructureLocked}
                                       onChange={(event) => handleDimChange(index, event.target.value)}
                                       min="1"
                                     />
@@ -2287,6 +2430,7 @@ export default function ModelTrainingPage() {
                                       ? (activeStructureParams[field.key] ?? field.defaultValue).join(',')
                                       : activeStructureParams[field.key] ?? field.defaultValue
                                   }
+                                  disabled={transferStructureLocked}
                                   min={
                                     field.type === 'boundedFloat' && OPEN_INTERVAL_FLOAT_FIELDS.has(field.key)
                                       ? '0.000001'

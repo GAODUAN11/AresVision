@@ -102,6 +102,7 @@ function ModelSourceControl({
   setSelectedCompareTrainingTaskIds,
   trainingTasksLoading,
   selectedTrainingOption,
+  requestContextLocked,
   isLight,
   isZh,
 }) {
@@ -154,13 +155,18 @@ function ModelSourceControl({
         accent={modelMode === PREDICT_MODEL_MODE_COMPARE ? C.green : C.blue}
       />
 
-      <OptionChips items={modeItems} activeValue={modelMode} onChange={setModelMode} />
+      <OptionChips
+        items={modeItems}
+        activeValue={modelMode}
+        onChange={setModelMode}
+        disabled={requestContextLocked}
+      />
 
       {modelMode === PREDICT_MODEL_MODE_TRAINED ? (
         <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
           <select
             value={selectedTrainingTaskId || ''}
-            disabled={trainingTasksLoading || !hasTrainingModels}
+            disabled={requestContextLocked || trainingTasksLoading || !hasTrainingModels}
             onChange={(event) => setSelectedTrainingTaskId(Number(event.target.value) || null)}
             style={{
               width: '100%',
@@ -272,7 +278,7 @@ function ModelSourceControl({
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
-              disabled={!hasTrainingModels}
+              disabled={requestContextLocked || !hasTrainingModels}
               onClick={() => setSelectedCompareTrainingTaskIds(filteredCompareOptions.map((option) => option.id))}
               style={{
                 padding: '7px 11px',
@@ -289,7 +295,7 @@ function ModelSourceControl({
             </button>
             <button
               type="button"
-              disabled={compareSelection.count === 0}
+              disabled={requestContextLocked || compareSelection.count === 0}
               onClick={() => setSelectedCompareTrainingTaskIds([])}
               style={{
                 padding: '7px 11px',
@@ -330,6 +336,7 @@ function ModelSourceControl({
                   <input
                     type="checkbox"
                     checked={active}
+                    disabled={requestContextLocked}
                     onChange={() => {
                       setSelectedCompareTrainingTaskIds((prev) => (
                         prev.includes(option.id)
@@ -456,6 +463,7 @@ function ModelHyperparams({ t, isZh }) {
 export default function PredictSidebar({
   isLight,
   loading,
+  requestContextLocked = false,
   isSwitchingSource,
   error,
   modelMode,
@@ -543,6 +551,7 @@ export default function PredictSidebar({
         setSelectedCompareTrainingTaskIds={setSelectedCompareTrainingTaskIds}
         trainingTasksLoading={trainingTasksLoading}
         selectedTrainingOption={selectedTrainingOption}
+        requestContextLocked={requestContextLocked}
         isLight={isLight}
         isZh={isZh}
       />
@@ -566,7 +575,7 @@ export default function PredictSidebar({
             max={predictionHorizonLimit}
             step="1"
             value={predStep}
-            disabled={predictionHorizonLimit == null}
+            disabled={requestContextLocked || predictionHorizonLimit == null}
             aria-label={t('predict.horizon')}
             onChange={(event) => {
               const nextHorizon = clampPredictionHorizon(event.target.value, predictionHorizonLimit);
@@ -637,7 +646,7 @@ export default function PredictSidebar({
               {t('predict.marsYear')}
             </div>
             <OptionChips
-              disabled={isSwitchingSource}
+              disabled={requestContextLocked || isSwitchingSource}
               items={years.map((year) => ({
                 value: year,
                 label: `MY ${year}`,
@@ -661,6 +670,7 @@ export default function PredictSidebar({
               max={355}
               step={1}
               value={lsStart}
+              disabled={requestContextLocked}
               onChange={(e) => setLsStart(Number(e.target.value))}
               style={{ width: '100%', accentColor: C.mars }}
             />
@@ -698,6 +708,7 @@ export default function PredictSidebar({
                 <input
                   type="checkbox"
                   checked={active}
+                  disabled={requestContextLocked}
                   onChange={() => toggleVar(v.id)}
                   style={{ accentColor: v.color }}
                 />

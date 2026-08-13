@@ -94,9 +94,10 @@ export function buildCompareParameterRows(items = []) {
 }
 
 export function getCompareSelectionState(selectedIds = []) {
-  const ids = (Array.isArray(selectedIds) ? selectedIds : [])
+  const ids = [...new Set((Array.isArray(selectedIds) ? selectedIds : [])
     .map((item) => Number(item))
-    .filter((item) => Number.isFinite(item) && item > 0);
+    .filter((item) => Number.isFinite(item) && item > 0))]
+    .sort((a, b) => a - b);
   return {
     ids,
     canCompare: ids.length >= 2,

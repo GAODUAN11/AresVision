@@ -1,5 +1,13 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { getPredictCache, setPredictCache } from '../stores/predictCache';
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  clearPredictCache,
+  getPredictCache,
+  getEmptyPredictCache,
+  getPredictionResultCacheForContext,
+  resolvePredictCacheScope,
+  setPredictCache,
+  setPredictUiPreferences,
+} from '../stores/predictCache';
 import C from '../constants/colors';
 import { useT } from '../i18n';
 import { useSettings } from '../contexts/SettingsContext';
@@ -41,9 +49,15 @@ import {
 import {
   buildErrorDistributionKey,
   buildPermutationImportanceKey,
+  buildPredictionContextKey,
   buildPredictMetricsKey,
   buildTrainingModelCompareKey,
 } from './PredictPage/predictAnalysisCacheKeys';
+import {
+  PREDICT_REQUEST_CHANNELS,
+  createPredictRequestCoordinator,
+  isAbortError,
+} from './PredictPage/predictRequestCoordinator';
 import {
   PREDICT_MODEL_MODE_COMPARE,
   PREDICT_MODEL_MODE_TRAINED,
@@ -55,6 +69,7 @@ import {
   clampPredictionHorizon,
   resolvePredictionHorizonLimit,
 } from './PredictPage/predictionHorizon';
+import { validatePredictCacheTrainingTasks } from './PredictPage/predictCacheTaskValidation';
 
 const SHORTHAND_MAP = {
   Temperature: 'T',
@@ -86,38 +101,56 @@ export default function PredictPage() {
   const plotText60 = isLight ? 'rgba(23,33,47,0.76)' : 'rgba(214,228,244,0.78)';
   const plotGridColor = isLight ? 'rgba(23,33,47,0.12)' : 'rgba(160,196,240,0.16)';
 
-  const _c = getPredictCache();
+  const predictScope = resolvePredictCacheScope({ user, isLoading });
+  const emptyCache = getEmptyPredictCache(predictScope);
+  const requestCoordinatorRef = useRef(null);
+  if (!requestCoordinatorRef.current) {
+    requestCoordinatorRef.current = createPredictRequestCoordinator();
+  }
+  const requestCoordinator = requestCoordinatorRef.current;
+  const predictScopeRef = useRef(null);
+  const cacheReadyScopeRef = useRef(null);
+  const restoredScopeRef = useRef(null);
+  const [cacheReadyScope, setCacheReadyScope] = useState(null);
+  const pendingTrainingTaskHandoffRef = useRef(null);
+  const writePredictCache = useCallback((updates) => {
+    const scope = predictScopeRef.current;
+    if (!scope || cacheReadyScopeRef.current !== scope) return false;
+    return setPredictCache(scope, updates);
+  }, []);
 
-  const [selectedVars, setSelectedVars] = useState(_c.params?.selectedVars ?? VARIABLE_DEFS.map((v) => v.id));
-  const [predStep, setPredStep] = useState(_c.params?.predStep ?? 3);
-  const [lsStart, setLsStart] = useState(_c.params?.lsStart ?? 90);
-  const [marsYear, setMarsYear] = useState(_c.params?.marsYear ?? 27);
+  const [selectedVars, setSelectedVars] = useState(() => VARIABLE_DEFS.map((v) => v.id));
+  const [predStep, setPredStep] = useState(3);
+  const [lsStart, setLsStart] = useState(90);
+  const [marsYear, setMarsYear] = useState(27);
   const dataSourceMode = 'default';
-  const [modelMode, setModelMode] = useState(normalizePredictModelMode(_c.params?.modelMode));
+  const [modelMode, setModelMode] = useState(() => normalizePredictModelMode());
   const [trainingTasks, setTrainingTasks] = useState([]);
+  const [trainingTasksScope, setTrainingTasksScope] = useState(null);
   const [trainingTasksLoading, setTrainingTasksLoading] = useState(false);
   const [trainingTasksLoaded, setTrainingTasksLoaded] = useState(false);
-  const [selectedTrainingTaskId, setSelectedTrainingTaskId] = useState(_c.params?.trainingTaskId ?? null);
-  const [selectedCompareTrainingTaskIds, setSelectedCompareTrainingTaskIds] = useState(_c.selectedCompareTrainingTaskIds ?? []);
+  const [selectedTrainingTaskId, setSelectedTrainingTaskId] = useState(null);
+  const [selectedCompareTrainingTaskIds, setSelectedCompareTrainingTaskIds] = useState([]);
   const [availableMarsYears, setAvailableMarsYears] = useState([27, 28]);
-  const [activeHorizon, setActiveHorizon] = useState(_c.activeHorizon);
-  const [viewMode, setViewMode] = useState(_c.viewMode);
+  const [activeHorizon, setActiveHorizon] = useState(0);
+  const [viewMode, setViewMode] = useState(emptyCache.viewMode);
 
   const [loading, setLoading] = useState(false);
   const [isSwitchingSource, setIsSwitchingSource] = useState(false);
-  const [results, setResults] = useState(_c.results);
-  const [metrics, setMetrics] = useState(_c.metrics);
-  const [errorDistData, setErrorDistData] = useState(_c.errorDistData);
-  const [pfiData, setPfiData] = useState(_c.pfiData);
-  const [metricsKey, setMetricsKey] = useState(_c.metricsKey ?? null);
-  const [errorDistKey, setErrorDistKey] = useState(_c.errorDistKey ?? null);
-  const [pfiKey, setPfiKey] = useState(_c.pfiKey ?? null);
-  const [compareTrainingMetricsData, setCompareTrainingMetricsData] = useState(_c.compareTrainingMetricsData ?? null);
-  const [compareTrainingMetricsKey, setCompareTrainingMetricsKey] = useState(_c.compareTrainingMetricsKey ?? null);
-  const [compareTrainingErrorData, setCompareTrainingErrorData] = useState(_c.compareTrainingErrorData ?? null);
-  const [compareTrainingErrorKey, setCompareTrainingErrorKey] = useState(_c.compareTrainingErrorKey ?? null);
-  const [compareTrainingPfiData, setCompareTrainingPfiData] = useState(_c.compareTrainingPfiData ?? null);
-  const [compareTrainingPfiKey, setCompareTrainingPfiKey] = useState(_c.compareTrainingPfiKey ?? null);
+  const [resultContextKey, setResultContextKey] = useState(null);
+  const [results, setResults] = useState(null);
+  const [metrics, setMetrics] = useState(null);
+  const [errorDistData, setErrorDistData] = useState(null);
+  const [pfiData, setPfiData] = useState(null);
+  const [metricsKey, setMetricsKey] = useState(null);
+  const [errorDistKey, setErrorDistKey] = useState(null);
+  const [pfiKey, setPfiKey] = useState(null);
+  const [compareTrainingMetricsData, setCompareTrainingMetricsData] = useState(null);
+  const [compareTrainingMetricsKey, setCompareTrainingMetricsKey] = useState(null);
+  const [compareTrainingErrorData, setCompareTrainingErrorData] = useState(null);
+  const [compareTrainingErrorKey, setCompareTrainingErrorKey] = useState(null);
+  const [compareTrainingPfiData, setCompareTrainingPfiData] = useState(null);
+  const [compareTrainingPfiKey, setCompareTrainingPfiKey] = useState(null);
   const [compareTrainingLoading, setCompareTrainingLoading] = useState(false);
   const [compareTrainingErrorLoading, setCompareTrainingErrorLoading] = useState(false);
   const [compareTrainingPfiLoading, setCompareTrainingPfiLoading] = useState(false);
@@ -125,15 +158,16 @@ export default function PredictPage() {
 
   const [fullscreen3D, setFullscreen3D] = useState(null);
 
-  const [performanceData, setPerformanceData] = useState(_c.performanceData);
+  const [performanceData, setPerformanceData] = useState(null);
+  const [performanceKey, setPerformanceKey] = useState(null);
   const [perfLoading, setPerfLoading] = useState(false);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [errorDistLoading, setErrorDistLoading] = useState(false);
   const [pfiLoading, setPfiLoading] = useState(false);
   const [activePerfMetric, setActivePerfMetric] = useState('r2');
 
-  const [compareConfigs, setCompareConfigs] = useState(_c.compareConfigs);
-  const [selectedCompareIds, setSelectedCompareIds] = useState(_c.selectedCompareIds);
+  const [compareConfigs, setCompareConfigs] = useState([]);
+  const [selectedCompareIds, setSelectedCompareIds] = useState([]);
   const [showShapley, setShowShapley] = useState({ visible: false, mode: 'gradient' });
 
   const analysisVisibility = useMemo(
@@ -141,8 +175,10 @@ export default function PredictPage() {
     [modelMode]
   );
   const trainingModelOptions = useMemo(
-    () => getCompletedTrainingModelOptions(trainingTasks),
-    [trainingTasks]
+    () => getCompletedTrainingModelOptions(
+      trainingTasksScope === predictScope ? trainingTasks : []
+    ),
+    [predictScope, trainingTasks, trainingTasksScope]
   );
   const selectedTrainingOption = useMemo(
     () => trainingModelOptions.find((option) => option.id === Number(selectedTrainingTaskId)) || null,
@@ -167,6 +203,22 @@ export default function PredictPage() {
     }),
     [modelMode, selectedCompareTrainingTasks, selectedTrainingOption]
   );
+  const currentPredictionContext = useMemo(() => ({
+    modelMode,
+    trainingTaskId: modelMode === PREDICT_MODEL_MODE_TRAINED
+      ? Number(selectedTrainingTaskId) || null
+      : null,
+    horizon: predStep,
+    selectedVars,
+    marsYear,
+    lsStart,
+  }), [lsStart, marsYear, modelMode, predStep, selectedTrainingTaskId, selectedVars]);
+  const currentPredictionContextKey = useMemo(
+    () => buildPredictionContextKey(currentPredictionContext),
+    [currentPredictionContext]
+  );
+  const currentPageRequestContextKey = `${currentPredictionContextKey}|compare:${compareSelectionIdKey}`;
+  const previousRequestContextKeyRef = useRef(currentPageRequestContextKey);
   const currentCompareTrainingMetricsKey = useMemo(
     () => buildTrainingModelCompareKey({
       taskIds: compareSelection.ids,
@@ -197,28 +249,135 @@ export default function PredictPage() {
     }),
     [compareSelectionIdKey, predStep]
   );
+  const currentPerformanceContextKey = useMemo(() => {
+    const selectedConfigIds = [...selectedCompareIds].map(String).sort().join(',');
+    return `${currentPredictionContextKey}|performance:${selectedConfigIds}`;
+  }, [currentPredictionContextKey, selectedCompareIds]);
+  const currentRequestContextKeysRef = useRef({});
+  currentRequestContextKeysRef.current = {
+    [PREDICT_REQUEST_CHANNELS.single]: currentPredictionContextKey,
+    [PREDICT_REQUEST_CHANNELS.compareMetrics]: currentCompareTrainingMetricsKey,
+    [PREDICT_REQUEST_CHANNELS.compareErrorDistribution]: currentCompareTrainingErrorKey,
+    [PREDICT_REQUEST_CHANNELS.comparePfi]: currentCompareTrainingPfiKey,
+    [PREDICT_REQUEST_CHANNELS.performance]: currentPerformanceContextKey,
+  };
+  const isRequestCurrent = (requestToken, requestContextKey) => (
+    requestToken.scope === predictScopeRef.current
+    &&
+    currentRequestContextKeysRef.current[requestToken.channel] === requestContextKey
+    && requestCoordinator.isCurrent(requestToken, requestContextKey)
+  );
+  const isRequestLatest = (requestToken, requestContextKey) => (
+    requestToken.scope === predictScopeRef.current
+    &&
+    currentRequestContextKeysRef.current[requestToken.channel] === requestContextKey
+    && requestCoordinator.isLatest(requestToken, requestContextKey)
+  );
   const activeCompareTrainingPfiData = currentCompareTrainingPfiKey === compareTrainingPfiKey
     ? compareTrainingPfiData
     : null;
+  const hasCurrentSingleResult = modelMode !== PREDICT_MODEL_MODE_COMPARE
+    && resultContextKey === currentPredictionContextKey;
+  const activeResults = hasCurrentSingleResult ? results : null;
+  const activeMetrics = hasCurrentSingleResult ? metrics : null;
+  const activeErrorDistData = hasCurrentSingleResult ? errorDistData : null;
+  const activePfiData = hasCurrentSingleResult ? pfiData : null;
+  const activePerformanceData = hasCurrentSingleResult
+    && performanceKey === currentPerformanceContextKey
+    ? performanceData
+    : null;
+  const activeError = previousRequestContextKeyRef.current === currentPageRequestContextKey
+    ? error
+    : null;
+  const requestContextLocked = loading
+    || metricsLoading
+    || errorDistLoading
+    || pfiLoading
+    || perfLoading
+    || compareTrainingLoading
+    || compareTrainingErrorLoading
+    || compareTrainingPfiLoading;
 
   const toggleVar = (id) => {
     setSelectedVars((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   useEffect(() => {
-    const handoff = parseTrainingTaskHandoff(sessionStorage.getItem(TRAINING_TASK_HANDOFF_KEY));
-    if (!handoff) return;
-
+    if (!predictScope) return;
+    const handoff = parseTrainingTaskHandoff(
+      sessionStorage.getItem(TRAINING_TASK_HANDOFF_KEY),
+      predictScope
+    );
     sessionStorage.removeItem(TRAINING_TASK_HANDOFF_KEY);
-    setModelMode(PREDICT_MODEL_MODE_TRAINED);
-    setSelectedTrainingTaskId(handoff.taskId);
-  }, []);
+    pendingTrainingTaskHandoffRef.current = handoff;
+  }, [predictScope]);
+
+  useLayoutEffect(() => {
+    if (predictScopeRef.current === predictScope) return;
+
+    const previousScope = predictScopeRef.current;
+    requestCoordinator.invalidateAll();
+    if (previousScope?.startsWith('user:')) clearPredictCache(previousScope);
+    predictScopeRef.current = predictScope;
+    cacheReadyScopeRef.current = null;
+    restoredScopeRef.current = null;
+    setCacheReadyScope(null);
+    previousRequestContextKeyRef.current = null;
+
+    setSelectedVars(VARIABLE_DEFS.map((variable) => variable.id));
+    setPredStep(3);
+    setLsStart(90);
+    setMarsYear(27);
+    setModelMode(normalizePredictModelMode());
+    setSelectedTrainingTaskId(null);
+    setSelectedCompareTrainingTaskIds([]);
+    setTrainingTasks([]);
+    setTrainingTasksScope(null);
+    setTrainingTasksLoading(false);
+    setTrainingTasksLoaded(false);
+    setIsSwitchingSource(false);
+    setCompareConfigs([]);
+    setSelectedCompareIds([]);
+
+    setLoading(false);
+    setMetricsLoading(false);
+    setErrorDistLoading(false);
+    setPfiLoading(false);
+    setPerfLoading(false);
+    setCompareTrainingLoading(false);
+    setCompareTrainingErrorLoading(false);
+    setCompareTrainingPfiLoading(false);
+    setError(null);
+
+    setResultContextKey(null);
+    setResults(null);
+    setMetrics(null);
+    setErrorDistData(null);
+    setPfiData(null);
+    setPerformanceData(null);
+    setPerformanceKey(null);
+    setMetricsKey(null);
+    setErrorDistKey(null);
+    setPfiKey(null);
+    setActiveHorizon(0);
+    setCompareTrainingMetricsData(null);
+    setCompareTrainingMetricsKey(null);
+    setCompareTrainingErrorData(null);
+    setCompareTrainingErrorKey(null);
+    setCompareTrainingPfiData(null);
+    setCompareTrainingPfiKey(null);
+    setFullscreen3D(null);
+    setShowShapley({ visible: false, mode: 'gradient' });
+
+    if (!predictScope) return;
+  }, [predictScope, requestCoordinator]);
 
   useEffect(() => {
     if (isLoading) return undefined;
 
     if (!user) {
       setTrainingTasks([]);
+      setTrainingTasksScope(null);
       setTrainingTasksLoading(false);
       setTrainingTasksLoaded(false);
       setSelectedTrainingTaskId(null);
@@ -229,15 +388,18 @@ export default function PredictPage() {
     let active = true;
     setTrainingTasksLoading(true);
     setTrainingTasksLoaded(false);
+    setTrainingTasksScope(null);
 
     fetchTasks()
       .then((items) => {
         if (!active) return;
         setTrainingTasks(Array.isArray(items) ? items : []);
+        setTrainingTasksScope(predictScope);
       })
       .catch(() => {
         if (!active) return;
         setTrainingTasks([]);
+        setTrainingTasksScope(predictScope);
       })
       .finally(() => {
         if (!active) return;
@@ -248,7 +410,154 @@ export default function PredictPage() {
     return () => {
       active = false;
     };
-  }, [isLoading, user?.id]);
+  }, [isLoading, predictScope, user?.id]);
+
+  useEffect(() => {
+    if (!predictScope || predictScopeRef.current !== predictScope) return;
+    const authenticatedScope = predictScope.startsWith('user:');
+    if (authenticatedScope && (
+      trainingTasksScope !== predictScope
+      || trainingTasksLoading
+      || !trainingTasksLoaded
+    )) return;
+    if (restoredScopeRef.current === predictScope) return;
+
+    const accessibleTaskIds = trainingModelOptions.map((option) => option.id);
+    const validatedCache = validatePredictCacheTrainingTasks(
+      getPredictCache(predictScope),
+      accessibleTaskIds
+    );
+
+    const cachedParams = validatedCache.params || {};
+    const restoredSelectedVars = Array.isArray(cachedParams.selectedVars)
+      ? cachedParams.selectedVars
+      : VARIABLE_DEFS.map((variable) => variable.id);
+    const restoredPredStep = cachedParams.predStep ?? 3;
+    const restoredLsStart = cachedParams.lsStart ?? 90;
+    const restoredMarsYear = cachedParams.marsYear ?? 27;
+    const restoredModelMode = normalizePredictModelMode(cachedParams.modelMode);
+    let restoredTrainingTaskId = cachedParams.trainingTaskId ?? null;
+
+    const handoff = pendingTrainingTaskHandoffRef.current;
+    if (authenticatedScope && handoff && accessibleTaskIds.includes(Number(handoff.taskId))) {
+      restoredTrainingTaskId = Number(handoff.taskId);
+      pendingTrainingTaskHandoffRef.current = null;
+    } else if (!authenticatedScope || handoff) {
+      pendingTrainingTaskHandoffRef.current = null;
+    }
+
+    const effectiveRestoredModelMode = handoff
+      ? PREDICT_MODEL_MODE_TRAINED
+      : restoredModelMode;
+    const restoredContext = {
+      modelMode: effectiveRestoredModelMode,
+      trainingTaskId: effectiveRestoredModelMode === PREDICT_MODEL_MODE_TRAINED
+        ? restoredTrainingTaskId
+        : null,
+      horizon: restoredPredStep,
+      selectedVars: restoredSelectedVars,
+      marsYear: restoredMarsYear,
+      lsStart: restoredLsStart,
+    };
+    const restoredContextKey = buildPredictionContextKey(restoredContext);
+    const restoredPerformanceKey = `${restoredContextKey}|performance:${[
+      ...(validatedCache.selectedCompareIds || []),
+    ].map(String).sort().join(',')}`;
+    const restoredResult = getPredictionResultCacheForContext(
+      validatedCache,
+      predictScope,
+      restoredContextKey,
+      {
+        metricsKey: buildPredictMetricsKey(restoredContext),
+        errorDistKey: buildErrorDistributionKey(restoredContext),
+        pfiKey: buildPermutationImportanceKey(restoredContext),
+        performanceKey: restoredPerformanceKey,
+      }
+    );
+
+    const restoredCompareIds = getCompareSelectionState(
+      validatedCache.selectedCompareTrainingTaskIds
+    ).ids;
+    const restoredCompareMetricsKey = buildTrainingModelCompareKey({
+      taskIds: restoredCompareIds,
+      horizon: restoredPredStep,
+      compareType: 'metrics',
+    });
+    const restoredCompareErrorKey = buildTrainingModelCompareKey({
+      taskIds: restoredCompareIds,
+      horizon: restoredPredStep,
+      compareType: 'error-distribution',
+    });
+    const restoredComparePfiKey = buildTrainingModelCompareKey({
+      taskIds: restoredCompareIds,
+      horizon: restoredPredStep,
+      compareType: 'pfi',
+    });
+    const compareMetricsMatch = Boolean(restoredCompareMetricsKey)
+      && validatedCache.compareTrainingMetricsKey === restoredCompareMetricsKey;
+    const compareErrorMatch = Boolean(restoredCompareErrorKey)
+      && validatedCache.compareTrainingErrorKey === restoredCompareErrorKey;
+    const comparePfiMatch = Boolean(restoredComparePfiKey)
+      && validatedCache.compareTrainingPfiKey === restoredComparePfiKey;
+    const restoredCache = {
+      ...validatedCache,
+      ...restoredResult,
+      compareTrainingMetricsData: compareMetricsMatch
+        ? validatedCache.compareTrainingMetricsData
+        : null,
+      compareTrainingMetricsKey: compareMetricsMatch ? restoredCompareMetricsKey : null,
+      compareTrainingErrorData: compareErrorMatch
+        ? validatedCache.compareTrainingErrorData
+        : null,
+      compareTrainingErrorKey: compareErrorMatch ? restoredCompareErrorKey : null,
+      compareTrainingPfiData: comparePfiMatch ? validatedCache.compareTrainingPfiData : null,
+      compareTrainingPfiKey: comparePfiMatch ? restoredComparePfiKey : null,
+    };
+    setPredictCache(predictScope, restoredCache);
+
+    setSelectedVars(restoredSelectedVars);
+    setPredStep(restoredPredStep);
+    setLsStart(restoredLsStart);
+    setMarsYear(restoredMarsYear);
+    setModelMode(effectiveRestoredModelMode);
+    setSelectedTrainingTaskId(restoredTrainingTaskId);
+    setSelectedCompareTrainingTaskIds(restoredCache.selectedCompareTrainingTaskIds || []);
+    setCompareConfigs(restoredCache.compareConfigs || []);
+    setSelectedCompareIds(restoredCache.selectedCompareIds || []);
+
+    setResultContextKey(restoredResult.resultContextKey);
+    setResults(restoredResult.results);
+    setMetrics(restoredResult.metrics);
+    setErrorDistData(restoredResult.errorDistData);
+    setPfiData(restoredResult.pfiData);
+    setPerformanceData(restoredResult.performanceData);
+    setPerformanceKey(restoredResult.performanceKey);
+    setMetricsKey(restoredResult.metricsKey);
+    setErrorDistKey(restoredResult.errorDistKey);
+    setPfiKey(restoredResult.pfiKey);
+    setActiveHorizon(restoredResult.activeHorizon);
+    setCompareTrainingMetricsData(restoredCache.compareTrainingMetricsData);
+    setCompareTrainingMetricsKey(restoredCache.compareTrainingMetricsKey);
+    setCompareTrainingErrorData(restoredCache.compareTrainingErrorData);
+    setCompareTrainingErrorKey(restoredCache.compareTrainingErrorKey);
+    setCompareTrainingPfiData(restoredCache.compareTrainingPfiData);
+    setCompareTrainingPfiKey(restoredCache.compareTrainingPfiKey);
+
+    const restoredCompareIdKey = restoredCompareIds.join(',');
+    previousRequestContextKeyRef.current = `${restoredContextKey}|compare:${restoredCompareIdKey}`;
+    restoredScopeRef.current = predictScope;
+    setCacheReadyScope(predictScope);
+  }, [
+    predictScope,
+    trainingModelOptions,
+    trainingTasksLoaded,
+    trainingTasksLoading,
+    trainingTasksScope,
+  ]);
+
+  useLayoutEffect(() => {
+    cacheReadyScopeRef.current = cacheReadyScope === predictScope ? predictScope : null;
+  }, [cacheReadyScope, predictScope]);
 
   useEffect(() => {
     if (modelMode !== PREDICT_MODEL_MODE_TRAINED || trainingTasksLoading || !trainingTasksLoaded) return;
@@ -265,6 +574,90 @@ export default function PredictPage() {
     if (predictionHorizonLimit == null) return;
     setPredStep((current) => clampPredictionHorizon(current, predictionHorizonLimit));
   }, [predictionHorizonLimit]);
+
+  useLayoutEffect(() => {
+    if (cacheReadyScopeRef.current !== predictScope) return;
+    if (previousRequestContextKeyRef.current === currentPageRequestContextKey) return;
+    previousRequestContextKeyRef.current = currentPageRequestContextKey;
+    requestCoordinator.invalidateAll();
+
+    setLoading(false);
+    setMetricsLoading(false);
+    setErrorDistLoading(false);
+    setPfiLoading(false);
+    setPerfLoading(false);
+    setCompareTrainingLoading(false);
+    setCompareTrainingErrorLoading(false);
+    setCompareTrainingPfiLoading(false);
+    setError(null);
+
+    setResultContextKey(null);
+    setResults(null);
+    setMetrics(null);
+    setErrorDistData(null);
+    setPfiData(null);
+    setPerformanceData(null);
+    setPerformanceKey(null);
+    setMetricsKey(null);
+    setErrorDistKey(null);
+    setPfiKey(null);
+    setActiveHorizon(0);
+    setCompareTrainingMetricsData(null);
+    setCompareTrainingMetricsKey(null);
+    setCompareTrainingErrorData(null);
+    setCompareTrainingErrorKey(null);
+    setCompareTrainingPfiData(null);
+    setCompareTrainingPfiKey(null);
+    setShowShapley({ visible: false, mode: 'gradient' });
+
+    writePredictCache({
+      resultContextKey: null,
+      results: null,
+      metrics: null,
+      errorDistData: null,
+      pfiData: null,
+      performanceData: null,
+      performanceKey: null,
+      metricsKey: null,
+      errorDistKey: null,
+      pfiKey: null,
+      activeHorizon: 0,
+      compareTrainingMetricsData: null,
+      compareTrainingMetricsKey: null,
+      compareTrainingErrorData: null,
+      compareTrainingErrorKey: null,
+      compareTrainingPfiData: null,
+      compareTrainingPfiKey: null,
+      selectedCompareTrainingTaskIds: compareSelection.ids,
+      params: {
+        selectedVars,
+        predStep,
+        lsStart,
+        marsYear,
+        dataSource: dataSourceMode,
+        modelMode,
+        trainingTaskId: currentPredictionContext.trainingTaskId,
+        compareTrainingTaskIds: compareSelection.ids,
+      },
+    });
+  }, [
+    compareSelection.ids,
+    currentPageRequestContextKey,
+    currentPredictionContext.trainingTaskId,
+    dataSourceMode,
+    lsStart,
+    marsYear,
+    modelMode,
+    predStep,
+    requestCoordinator,
+    selectedVars,
+    predictScope,
+    writePredictCache,
+  ]);
+
+  useLayoutEffect(() => () => {
+    requestCoordinator.invalidateAll();
+  }, [requestCoordinator]);
 
   useEffect(() => {
     let active = true;
@@ -316,12 +709,24 @@ export default function PredictPage() {
       if (nextCompareKey === compareTrainingMetricsKey && compareTrainingMetricsData) {
         return;
       }
+      const requestContextKey = nextCompareKey;
+      const requestToken = {
+        ...requestCoordinator.start(
+        PREDICT_REQUEST_CHANNELS.compareMetrics,
+        requestContextKey
+        ),
+        scope: predictScopeRef.current,
+      };
       setCompareTrainingLoading(true);
       try {
-        const compareResult = await compareTrainingModels(compareTaskIds, { horizon: predStep });
+        const compareResult = await compareTrainingModels(compareTaskIds, {
+          horizon: predStep,
+          signal: requestToken.signal,
+        });
+        if (!isRequestCurrent(requestToken, requestContextKey)) return;
         setCompareTrainingMetricsData(compareResult);
         setCompareTrainingMetricsKey(nextCompareKey);
-        setPredictCache({
+        writePredictCache({
           compareTrainingMetricsData: compareResult,
           compareTrainingMetricsKey: nextCompareKey,
           selectedCompareTrainingTaskIds: compareTaskIds,
@@ -336,9 +741,13 @@ export default function PredictPage() {
           },
         });
       } catch (e) {
+        if (!isRequestLatest(requestToken, requestContextKey) || isAbortError(e)) return;
         setError(e.message || (settings?.language !== 'en' ? '多模型对比失败。' : 'Training model comparison failed.'));
       } finally {
-        setCompareTrainingLoading(false);
+        if (isRequestCurrent(requestToken, requestContextKey)
+          && requestCoordinator.finish(requestToken, requestContextKey)) {
+          setCompareTrainingLoading(false);
+        }
       }
       return;
     }
@@ -348,9 +757,6 @@ export default function PredictPage() {
       setError(settings?.language !== 'en' ? '请先选择一个已完成的训练模型。' : 'Select a completed trained model first.');
       return;
     }
-
-    setError(null);
-    setLoading(true);
 
     const body = {
       selected_variables: selectedVars,
@@ -368,6 +774,16 @@ export default function PredictPage() {
       marsYear,
       lsStart,
     };
+    const requestContextKey = buildPredictionContextKey(analysisContext);
+    const requestToken = {
+      ...requestCoordinator.start(
+      PREDICT_REQUEST_CHANNELS.single,
+      requestContextKey
+      ),
+      scope: predictScopeRef.current,
+    };
+    setError(null);
+    setLoading(true);
     const nextMetricsKey = buildPredictMetricsKey(analysisContext);
     const nextErrorDistKey = analysisVisibility.errorDistribution
       ? buildErrorDistributionKey(analysisContext)
@@ -391,11 +807,18 @@ export default function PredictPage() {
 
     try {
       const [predResult, metricsResult] = await Promise.all([
-        runPrediction(body, { dataSource: dataSourceMode }),
+        runPrediction(body, {
+          dataSource: dataSourceMode,
+          signal: requestToken.signal,
+        }),
         shouldFetchMetrics
-          ? fetchPredictMetrics(body, { dataSource: dataSourceMode })
+          ? fetchPredictMetrics(body, {
+              dataSource: dataSourceMode,
+              signal: requestToken.signal,
+            })
           : Promise.resolve(metrics),
       ]);
+      if (!isRequestCurrent(requestToken, requestContextKey)) return;
 
       const errorDistPromise = analysisVisibility.errorDistribution
         ? !nextErrorDistKey
@@ -406,8 +829,9 @@ export default function PredictPage() {
           ? fetchErrorDistribution(predResult.selected_variables || [], {
               trainingTaskId,
               horizon: predStep,
+              signal: requestToken.signal,
             })
-          : fetchErrorDistribution(selectedVars)
+          : fetchErrorDistribution(selectedVars, { signal: requestToken.signal })
         : Promise.resolve(null);
       const pfiVariables = modelMode === PREDICT_MODEL_MODE_TRAINED
         ? (predResult.selected_variables || [])
@@ -420,25 +844,33 @@ export default function PredictPage() {
               marsYear,
               lsStart,
               horizon: predStep,
+              signal: requestToken.signal,
             })
         : Promise.resolve(null);
       const [errorDistResult, pfiResult] = await Promise.all([errorDistPromise, pfiPromise]);
+      if (!isRequestCurrent(requestToken, requestContextKey)) return;
       const nextPerformanceData = modelMode === PREDICT_MODEL_MODE_TRAINED
         ? { results: { current: buildPerformanceMetricsFromEval(metricsResult) } }
         : performanceData;
+      const nextPerformanceKey = modelMode === PREDICT_MODEL_MODE_TRAINED
+        ? currentPerformanceContextKey
+        : performanceKey;
 
       setResults(predResult);
       setMetrics(metricsResult);
       setErrorDistData(errorDistResult);
       setPfiData(pfiResult);
+      setResultContextKey(requestContextKey);
       if (nextMetricsKey) setMetricsKey(nextMetricsKey);
       setErrorDistKey(nextErrorDistKey);
       if (nextPfiKey) setPfiKey(nextPfiKey);
       if (modelMode === PREDICT_MODEL_MODE_TRAINED) {
         setPerformanceData(nextPerformanceData);
+        setPerformanceKey(nextPerformanceKey);
       }
       setActiveHorizon(0);
-      setPredictCache({
+      writePredictCache({
+        resultContextKey: requestContextKey,
         results: predResult,
         metrics: metricsResult,
         errorDistData: errorDistResult,
@@ -447,6 +879,7 @@ export default function PredictPage() {
         errorDistKey: nextErrorDistKey,
         pfiKey: nextPfiKey,
         performanceData: nextPerformanceData,
+        performanceKey: nextPerformanceKey,
         activeHorizon: 0,
         params: {
           selectedVars,
@@ -459,12 +892,16 @@ export default function PredictPage() {
         },
       });
     } catch (e) {
+      if (!isRequestLatest(requestToken, requestContextKey) || isAbortError(e)) return;
       setError(e.message || t('predict.errorPrefix'));
     } finally {
-      setLoading(false);
-      setMetricsLoading(false);
-      setErrorDistLoading(false);
-      setPfiLoading(false);
+      if (isRequestCurrent(requestToken, requestContextKey)
+        && requestCoordinator.finish(requestToken, requestContextKey)) {
+        setLoading(false);
+        setMetricsLoading(false);
+        setErrorDistLoading(false);
+        setPfiLoading(false);
+      }
     }
   }, [
     analysisVisibility.errorDistribution,
@@ -473,6 +910,7 @@ export default function PredictPage() {
     compareTrainingMetricsData,
     compareTrainingMetricsKey,
     currentCompareTrainingMetricsKey,
+    currentPerformanceContextKey,
     dataSourceMode,
     errorDistData,
     errorDistKey,
@@ -483,14 +921,17 @@ export default function PredictPage() {
     metricsKey,
     modelMode,
     performanceData,
+    performanceKey,
     predictionHorizonLimit,
     predStep,
     pfiData,
     pfiKey,
+    requestCoordinator,
     selectedTrainingTaskId,
     selectedVars,
     settings?.language,
     t,
+    writePredictCache,
   ]);
 
   const handleLoadCompareErrorDistribution = useCallback(async () => {
@@ -499,27 +940,45 @@ export default function PredictPage() {
       return;
     }
     if (activeCompareTrainingErrorData) return;
+    const requestContextKey = currentCompareTrainingErrorKey;
+    const requestToken = {
+      ...requestCoordinator.start(
+      PREDICT_REQUEST_CHANNELS.compareErrorDistribution,
+      requestContextKey
+      ),
+      scope: predictScopeRef.current,
+    };
     setError(null);
     setCompareTrainingErrorLoading(true);
     try {
-      const result = await compareTrainingModelErrorDistributions(compareSelection.ids, { horizon: predStep });
+      const result = await compareTrainingModelErrorDistributions(compareSelection.ids, {
+        horizon: predStep,
+        signal: requestToken.signal,
+      });
+      if (!isRequestCurrent(requestToken, requestContextKey)) return;
       setCompareTrainingErrorData(result);
-      setCompareTrainingErrorKey(currentCompareTrainingErrorKey);
-      setPredictCache({
+      setCompareTrainingErrorKey(requestContextKey);
+      writePredictCache({
         compareTrainingErrorData: result,
-        compareTrainingErrorKey: currentCompareTrainingErrorKey,
+        compareTrainingErrorKey: requestContextKey,
       });
     } catch (e) {
+      if (!isRequestLatest(requestToken, requestContextKey) || isAbortError(e)) return;
       setError(e.message || (settings?.language !== 'en' ? '误差分布对比失败。' : 'Error distribution comparison failed.'));
     } finally {
-      setCompareTrainingErrorLoading(false);
+      if (isRequestCurrent(requestToken, requestContextKey)
+        && requestCoordinator.finish(requestToken, requestContextKey)) {
+        setCompareTrainingErrorLoading(false);
+      }
     }
   }, [
     activeCompareTrainingErrorData,
     compareSelection,
     currentCompareTrainingErrorKey,
     predStep,
+    requestCoordinator,
     settings?.language,
+    writePredictCache,
   ]);
 
   const handleLoadComparePfi = useCallback(async () => {
@@ -528,59 +987,61 @@ export default function PredictPage() {
       return;
     }
     if (activeCompareTrainingPfiData) return;
+    const requestContextKey = currentCompareTrainingPfiKey;
+    const requestToken = {
+      ...requestCoordinator.start(
+      PREDICT_REQUEST_CHANNELS.comparePfi,
+      requestContextKey
+      ),
+      scope: predictScopeRef.current,
+    };
     setError(null);
     setCompareTrainingPfiLoading(true);
     try {
-      const result = await compareTrainingModelPfi(compareSelection.ids, { horizon: predStep });
+      const result = await compareTrainingModelPfi(compareSelection.ids, {
+        horizon: predStep,
+        signal: requestToken.signal,
+      });
+      if (!isRequestCurrent(requestToken, requestContextKey)) return;
       setCompareTrainingPfiData(result);
-      setCompareTrainingPfiKey(currentCompareTrainingPfiKey);
-      setPredictCache({
+      setCompareTrainingPfiKey(requestContextKey);
+      writePredictCache({
         compareTrainingPfiData: result,
-        compareTrainingPfiKey: currentCompareTrainingPfiKey,
+        compareTrainingPfiKey: requestContextKey,
       });
     } catch (e) {
+      if (!isRequestLatest(requestToken, requestContextKey) || isAbortError(e)) return;
       setError(e.message || (settings?.language !== 'en' ? 'PFI 对比失败。' : 'PFI comparison failed.'));
     } finally {
-      setCompareTrainingPfiLoading(false);
+      if (isRequestCurrent(requestToken, requestContextKey)
+        && requestCoordinator.finish(requestToken, requestContextKey)) {
+        setCompareTrainingPfiLoading(false);
+      }
     }
   }, [
     activeCompareTrainingPfiData,
     compareSelection,
     currentCompareTrainingPfiKey,
     predStep,
+    requestCoordinator,
     settings?.language,
+    writePredictCache,
   ]);
 
-  useEffect(() => { setPredictCache({ viewMode }); }, [viewMode]);
-  useEffect(() => { setPredictCache({ activeHorizon }); }, [activeHorizon]);
-  useEffect(() => { setPredictCache({ performanceData }); }, [performanceData]);
-  useEffect(() => { setPredictCache({ compareConfigs }); }, [compareConfigs]);
-  useEffect(() => { setPredictCache({ selectedCompareIds }); }, [selectedCompareIds]);
-  useEffect(() => { setPredictCache({ selectedCompareTrainingTaskIds }); }, [selectedCompareTrainingTaskIds]);
-  useEffect(() => { setPredictCache({ pfiData }); }, [pfiData]);
-  useEffect(() => { setPredictCache({ metricsKey }); }, [metricsKey]);
-  useEffect(() => { setPredictCache({ errorDistKey }); }, [errorDistKey]);
-  useEffect(() => { setPredictCache({ pfiKey }); }, [pfiKey]);
-  useEffect(() => { setPredictCache({ compareTrainingMetricsData }); }, [compareTrainingMetricsData]);
-  useEffect(() => { setPredictCache({ compareTrainingMetricsKey }); }, [compareTrainingMetricsKey]);
-  useEffect(() => { setPredictCache({ compareTrainingErrorData }); }, [compareTrainingErrorData]);
-  useEffect(() => { setPredictCache({ compareTrainingErrorKey }); }, [compareTrainingErrorKey]);
-  useEffect(() => { setPredictCache({ compareTrainingPfiData }); }, [compareTrainingPfiData]);
-  useEffect(() => { setPredictCache({ compareTrainingPfiKey }); }, [compareTrainingPfiKey]);
-
+  useEffect(() => { setPredictUiPreferences({ viewMode }); }, [viewMode]);
+  useEffect(() => { writePredictCache({ activeHorizon }); }, [activeHorizon, writePredictCache]);
+  useEffect(() => { writePredictCache({ compareConfigs }); }, [compareConfigs, writePredictCache]);
+  useEffect(() => { writePredictCache({ selectedCompareIds }); }, [selectedCompareIds, writePredictCache]);
   useEffect(() => {
-    if (analysisVisibility.performanceComparison) return;
-    setPerformanceData(null);
-    setErrorDistData(null);
-    setPfiData(null);
-    setShowShapley({ visible: false, mode: 'gradient' });
-  }, [analysisVisibility.performanceComparison]);
+    writePredictCache({ selectedCompareTrainingTaskIds: compareSelection.ids });
+  }, [compareSelectionIdKey, writePredictCache]);
 
   useEffect(() => {
     if (modelMode !== PREDICT_MODEL_MODE_COMPARE) return;
     setResults(null);
     setMetrics(null);
     setPerformanceData(null);
+    setPerformanceKey(null);
     setErrorDistData(null);
     setPfiData(null);
     setShowShapley({ visible: false, mode: 'gradient' });
@@ -589,8 +1050,14 @@ export default function PredictPage() {
   const handleFetchPerformance = useCallback(async () => {
     if (!analysisVisibility.performanceComparison) return;
 
+    const requestContextKey = currentPerformanceContextKey;
+    const requestToken = {
+      ...requestCoordinator.start(PREDICT_REQUEST_CHANNELS.performance, requestContextKey),
+      scope: predictScopeRef.current,
+    };
     setPerfLoading(true);
     try {
+      let nextPerformanceData;
       if (selectedCompareIds.length > 0) {
         const configs = compareConfigs
           .filter((c) => selectedCompareIds.includes(c.id))
@@ -601,11 +1068,12 @@ export default function PredictPage() {
           res = await fetchPerformanceComparison(configs, {
             dataSource: dataSourceMode,
             marsYear,
+            signal: requestToken.signal,
           });
           console.log('fetchPerformanceComparison RAW:', res);
         }
 
-        setPerformanceData(res);
+        nextPerformanceData = res;
       } else {
         const body = {
           selected_variables: selectedVars,
@@ -613,39 +1081,56 @@ export default function PredictPage() {
           ls_start: lsStart,
           mars_year: marsYear,
         };
-        const res = await fetchPerformanceCurve(body, { dataSource: dataSourceMode });
+        const res = await fetchPerformanceCurve(body, {
+          dataSource: dataSourceMode,
+          signal: requestToken.signal,
+        });
         console.log('fetchPerformanceCurve RAW (current):', res);
         const key = selectedVars.length === 0 ? 'baseline' : 'current';
-        setPerformanceData({ results: { [key]: res } });
+        nextPerformanceData = { results: { [key]: res } };
       }
+      if (!isRequestCurrent(requestToken, requestContextKey)) return;
+      setPerformanceData(nextPerformanceData);
+      setPerformanceKey(requestContextKey);
+      writePredictCache({
+        performanceData: nextPerformanceData,
+        performanceKey: requestContextKey,
+      });
     } catch (e) {
+      if (!isRequestLatest(requestToken, requestContextKey) || isAbortError(e)) return;
       console.error('Fetch performance error:', e);
     } finally {
-      setPerfLoading(false);
+      if (isRequestCurrent(requestToken, requestContextKey)
+        && requestCoordinator.finish(requestToken, requestContextKey)) {
+        setPerfLoading(false);
+      }
     }
   }, [
     analysisVisibility.performanceComparison,
     compareConfigs,
+    currentPerformanceContextKey,
     dataSourceMode,
     lsStart,
     marsYear,
     predStep,
+    requestCoordinator,
     selectedCompareIds,
     selectedVars,
+    writePredictCache,
   ]);
 
-  const step = results ? Math.min(activeHorizon, (results.horizon || 1) - 1) : 0;
-  const truthField = results?.ground_truth?.[step] ?? null;
-  const predField = results?.prediction?.[step] ?? null;
-  const residField = results?.residual?.[step] ?? null;
-  const stepLs = results?.ls_values?.[step];
+  const step = activeResults ? Math.min(activeHorizon, (activeResults.horizon || 1) - 1) : 0;
+  const truthField = activeResults?.ground_truth?.[step] ?? null;
+  const predField = activeResults?.prediction?.[step] ?? null;
+  const residField = activeResults?.residual?.[step] ?? null;
+  const stepLs = activeResults?.ls_values?.[step];
 
   const stepLabel = (ls) => (ls != null ? ` · Ls=${ls.toFixed(3)}°` : '');
 
   const currentSelectionShorthand = getShorthands(selectedVars);
-  const currentSelectionMetrics = performanceData?.results?.[currentSelectionShorthand]
-    || performanceData?.results?.current
-    || performanceData?.results?.baseline
+  const currentSelectionMetrics = activePerformanceData?.results?.[currentSelectionShorthand]
+    || activePerformanceData?.results?.current
+    || activePerformanceData?.results?.baseline
     || null;
 
   return (
@@ -656,8 +1141,9 @@ export default function PredictPage() {
         <PredictSidebar
           isLight={isLight}
           loading={modelMode === PREDICT_MODEL_MODE_COMPARE ? compareTrainingLoading : loading}
+          requestContextLocked={requestContextLocked}
           isSwitchingSource={isSwitchingSource}
-          error={error}
+          error={activeError}
           modelMode={modelMode}
           setModelMode={setModelMode}
           trainingModelOptions={trainingModelOptions}
@@ -701,7 +1187,7 @@ export default function PredictPage() {
             viewMode={viewMode}
             setViewMode={setViewMode}
             VIEW_MODES={VIEW_MODES}
-            results={results}
+            results={activeResults}
             activeHorizon={activeHorizon}
             setActiveHorizon={setActiveHorizon}
             loading={loading}
@@ -718,7 +1204,7 @@ export default function PredictPage() {
           {analysisVisibility.metrics ? (
           <PredictMetrics
             loading={metricsLoading}
-            metrics={metrics}
+            metrics={activeMetrics}
             precision={precision}
             ozoneUnit={ozoneUnit}
             modelMode={modelMode}
@@ -727,7 +1213,7 @@ export default function PredictPage() {
 
           {analysisVisibility.errorDistribution ? (
             <ErrorDistributionChart
-              data={errorDistData}
+              data={activeErrorDistData}
               loading={errorDistLoading}
               isLight={isLight}
               plotTextColor={plotTextColor}
@@ -738,7 +1224,7 @@ export default function PredictPage() {
 
           {analysisVisibility.permutationImportance ? (
             <PermutationImportanceChart
-              data={pfiData}
+              data={activePfiData}
               loading={pfiLoading}
               plotTextColor={plotTextColor}
               plotText60={plotText60}
@@ -749,7 +1235,7 @@ export default function PredictPage() {
           {analysisVisibility.performanceComparison ? (
             <PredictBarChart
               isLight={isLight}
-              performanceData={performanceData}
+              performanceData={activePerformanceData}
               compareConfigs={compareConfigs}
               selectedCompareIds={selectedCompareIds}
               activeMetric={activePerfMetric}

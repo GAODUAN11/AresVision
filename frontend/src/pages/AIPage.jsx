@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import C from '../constants/colors';
 import { useT } from '../i18n';
+import { useAuth } from '../contexts/AuthContext';
 import SectionTitle from '../components/SectionTitle';
 import GlowCard from '../components/GlowCard';
 import { aiChat } from '../services/api';
-import { getPredictCache } from '../stores/predictCache';
+import { getPredictCache, resolvePredictCacheScope } from '../stores/predictCache';
 import { ChatMessage, SidebarContext, QuickQuestions, ErrorSummary } from './AIPage/AIComponents';
 
 const LATITUDE_BANDS_FOR_SUMMARY = [
@@ -267,6 +268,8 @@ function buildContextPayload(snapshot) {
 
 export default function AIPage() {
   const t = useT();
+  const { user, isLoading } = useAuth();
+  const predictScope = resolvePredictCacheScope({ user, isLoading });
   const quickQuestions = t('ai.quickQuestions');
 
   const makeWelcome = useCallback(
@@ -277,13 +280,24 @@ export default function AIPage() {
   const [messages, setMessages] = useState([makeWelcome()]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [snapshot, setSnapshot] = useState(() => getPredictCache());
+  const [snapshot, setSnapshot] = useState(() => getPredictCache(null));
 
   const messageEndRef = useRef(null);
+  const predictScopeRef = useRef(null);
+  const requestIdentityRef = useRef(0);
 
   const refreshContext = useCallback(() => {
-    setSnapshot(getPredictCache());
-  }, []);
+    setSnapshot(getPredictCache(predictScope));
+  }, [predictScope]);
+
+  useLayoutEffect(() => {
+    if (predictScopeRef.current === predictScope) return;
+    predictScopeRef.current = predictScope;
+    requestIdentityRef.current += 1;
+    setSnapshot(getPredictCache(predictScope));
+    setMessages([makeWelcome()]);
+    setSending(false);
+  }, [makeWelcome, predictScope]);
 
   useEffect(() => {
     refreshContext();
@@ -355,25 +369,33 @@ export default function AIPage() {
       setInput('');
       setSending(true);
 
-      const latestSnapshot = getPredictCache();
+      const requestScope = predictScope;
+      const requestIdentity = ++requestIdentityRef.current;
+      const latestSnapshot = getPredictCache(requestScope);
       setSnapshot(latestSnapshot);
       const context = buildContextPayload(latestSnapshot);
 
       try {
         const res = await aiChat(question, context, history);
+        if (requestScope !== predictScopeRef.current
+          || requestIdentity !== requestIdentityRef.current) return;
         const answer = normalizeAiTextPlain(res?.answer) || t('ai.sendFailed');
         replacePendingMessage(pendingId, answer);
       } catch (err) {
+        if (requestScope !== predictScopeRef.current
+          || requestIdentity !== requestIdentityRef.current) return;
         replacePendingMessage(
           pendingId,
           `${t('ai.sendFailed')}${err?.message ? `: ${err.message}` : ''}`
         );
       } finally {
+        if (requestScope !== predictScopeRef.current
+          || requestIdentity !== requestIdentityRef.current) return;
         setSending(false);
-        setSnapshot(getPredictCache());
+        setSnapshot(getPredictCache(requestScope));
       }
     },
-    [input, messages, replacePendingMessage, sending, t]
+    [input, messages, predictScope, replacePendingMessage, sending, t]
   );
 
   const clearChat = useCallback(() => {

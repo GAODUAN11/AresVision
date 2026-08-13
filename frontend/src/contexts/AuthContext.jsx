@@ -8,6 +8,10 @@ import {
   fetchGlobeData,
   prewarmPredictSource,
 } from '../services/api';
+import {
+  beginAuthenticatedPredictionSession,
+  endAuthenticatedPredictionSession,
+} from '../stores/authPredictionSession';
 
 const AuthContext = createContext(null);
 
@@ -22,16 +26,19 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const stored = localStorage.getItem('aresvision_token');
     if (!stored) {
+      endAuthenticatedPredictionSession();
       setIsLoading(false);
       return;
     }
 
     apiGetMe()
       .then((me) => {
+        beginAuthenticatedPredictionSession(me.id);
         setUser(me);
         setToken(stored);
       })
       .catch(() => {
+        endAuthenticatedPredictionSession();
         localStorage.removeItem('aresvision_token');
       })
       .finally(() => setIsLoading(false));
@@ -39,6 +46,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const handler = () => {
+      endAuthenticatedPredictionSession();
       setUser(null);
       setToken(null);
     };
@@ -48,7 +56,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!user?.id || !token) return;
-    const warmKey = `${user.id}:${token}`;
+    const warmKey = String(user.id);
     if (prewarmedKeysRef.current.has(warmKey)) return;
     prewarmedKeysRef.current.add(warmKey);
 
@@ -67,6 +75,7 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const data = await apiLogin(email, password);
+    beginAuthenticatedPredictionSession(data.user.id);
     localStorage.setItem('aresvision_token', data.token);
     setToken(data.token);
     setUser(data.user);
@@ -79,6 +88,7 @@ export function AuthProvider({ children }) {
   }, [login]);
 
   const logout = useCallback(() => {
+    endAuthenticatedPredictionSession();
     localStorage.removeItem('aresvision_token');
     setToken(null);
     setUser(null);

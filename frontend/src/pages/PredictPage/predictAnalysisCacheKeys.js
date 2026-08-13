@@ -1,47 +1,70 @@
 function normalizeVars(vars = []) {
-  return (Array.isArray(vars) ? vars : [])
+  return [...new Set((Array.isArray(vars) ? vars : [])
     .map((item) => String(item || '').trim())
-    .filter(Boolean)
-    .sort()
-    .join(',');
+    .filter(Boolean))]
+    .sort();
 }
 
-export function buildPredictMetricsKey({
+function normalizePositiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function normalizeFiniteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function normalizePredictionContext({
   modelMode,
   trainingTaskId,
   horizon,
   selectedVars,
   marsYear,
   lsStart,
-}) {
-  if (modelMode === 'trained') {
-    return trainingTaskId ? `trained:${trainingTaskId}:h:${horizon}` : null;
-  }
-  return `system:default:my:${marsYear}:ls:${lsStart}:h:${horizon}:vars:${normalizeVars(selectedVars)}`;
+} = {}) {
+  return {
+    modelMode: String(modelMode || '').trim(),
+    trainingTaskId: normalizePositiveNumber(trainingTaskId),
+    horizon: normalizePositiveNumber(horizon),
+    marsYear: normalizeFiniteNumber(marsYear),
+    lsStart: normalizeFiniteNumber(lsStart),
+    selectedVars: normalizeVars(selectedVars),
+  };
 }
 
-export function buildErrorDistributionKey({
-  modelMode,
-  trainingTaskId,
-  horizon,
-  selectedVars,
-}) {
-  if (modelMode === 'trained') {
-    return trainingTaskId ? `trained:${trainingTaskId}:h:${horizon}` : null;
-  }
-  return `system:default:vars:${normalizeVars(selectedVars)}`;
+export function buildPredictionContextKey(context) {
+  const normalized = normalizePredictionContext(context);
+  return [
+    `mode:${normalized.modelMode}`,
+    `task:${normalized.trainingTaskId ?? 'none'}`,
+    `h:${normalized.horizon ?? 'none'}`,
+    `my:${normalized.marsYear ?? 'none'}`,
+    `ls:${normalized.lsStart ?? 'none'}`,
+    `vars:${normalized.selectedVars.join(',')}`,
+  ].join('|');
 }
 
-export function buildPermutationImportanceKey({
-  modelMode,
-  trainingTaskId,
-  horizon,
-  selectedVars,
-}) {
-  if (modelMode === 'trained') {
-    return trainingTaskId ? `trained:${trainingTaskId}:h:${horizon}:vars:${normalizeVars(selectedVars)}` : null;
-  }
-  return `system:vars:${normalizeVars(selectedVars)}`;
+export function isPredictionCacheContextCurrent(cacheContextKey, context) {
+  return Boolean(cacheContextKey) && cacheContextKey === buildPredictionContextKey(context);
+}
+
+function buildAnalysisKey(type, context) {
+  const normalized = normalizePredictionContext(context);
+  if (normalized.modelMode === 'trained' && !normalized.trainingTaskId) return null;
+  return `${type}:${buildPredictionContextKey(normalized)}`;
+}
+
+export function buildPredictMetricsKey(context) {
+  return buildAnalysisKey('metrics', context);
+}
+
+export function buildErrorDistributionKey(context) {
+  return buildAnalysisKey('error-distribution', context);
+}
+
+export function buildPermutationImportanceKey(context) {
+  return buildAnalysisKey('pfi', context);
 }
 
 export function buildTrainingModelCompareKey({ taskIds, horizon, compareType = 'metrics' }) {

@@ -53,6 +53,7 @@ import {
   TRAINING_TASK_HANDOFF_KEY,
   buildTrainingTaskHandoff,
 } from './PredictPage/trainedModelSelection';
+import { createUserPredictScope } from '../stores/predictCache';
 import {
   getTrainingRequestDataSource,
   getTrainingSourceLabel,
@@ -1496,7 +1497,7 @@ export default function ModelTrainingPage() {
   };
 
   const handleAnalyzeTask = (task) => {
-    const handoff = buildTrainingTaskHandoff(task);
+    const handoff = buildTrainingTaskHandoff(task, createUserPredictScope(user?.id));
     if (!handoff) return;
 
     sessionStorage.setItem(TRAINING_TASK_HANDOFF_KEY, JSON.stringify(handoff));

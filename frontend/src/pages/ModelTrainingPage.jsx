@@ -60,6 +60,7 @@ import {
 import {
   applyTransferStructureConfig,
   captureTransferStructureSnapshot,
+  getAvailableTransferSourceTasks,
   hasTransferSourceTask,
   readTransferSourceTaskConfig,
 } from './ModelTrainingPage/transferSourceConfig';
@@ -841,7 +842,7 @@ export default function ModelTrainingPage() {
   const selectedUploadedModelLabel =
     selectedUploadedModel?.display_name || selectedUploadedModel?.original_filename || copy.uploadedModelUnnamed;
   const completedTransferTasks = useMemo(
-    () => tasks.filter((task) => task.status === 'completed' && task.output_model_path),
+    () => getAvailableTransferSourceTasks(tasks),
     [tasks]
   );
   const selectedTrainingWeight = useMemo(

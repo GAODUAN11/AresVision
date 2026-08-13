@@ -781,7 +781,7 @@ const zh = {
     fallbackWarning: '注意：此预测使用了由于缺失而自动选择的回退模型',
     fallbackReason: '原因：',
     initPrompt: '配置参数并点击"开始预测"以运行 PredRNNv2 推理',
-    initDesc: '模型将基于选定的 Ls 起始时刻，利用前 3 个时间步的多通道数据，\n预测后续最多 3 个时间步的火星全球臭氧柱浓度空间分布。',
+    initDesc: '模型将基于选定的 Ls 起始时刻，遵循所选训练任务的输入与输出窗口配置，\n预测火星全球臭氧柱浓度空间分布。',
     summary: ({ lsStart, year, horizon, varCount, varNames, rmse, ssim, r2 }) =>
       `<strong>预测完成</strong>：起始 Ls=${lsStart}°，MY${year}，共预测 ${horizon} 步。\n` +
       `输入变量：O₃ + ${varCount} 个环境变量${varCount > 0 ? `（${varNames}）` : '（仅 O₃ 自回归基线）'}。\n` +

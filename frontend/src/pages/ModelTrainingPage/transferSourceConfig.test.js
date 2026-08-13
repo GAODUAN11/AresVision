@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   applyTransferStructureConfig,
   captureTransferStructureSnapshot,
+  getAvailableTransferSourceTasks,
   hasTransferSourceTask,
   readTransferSourceTaskConfig,
 } from './transferSourceConfig.js';
@@ -245,4 +246,15 @@ test('detects when a selected completed source task disappears', () => {
   assert.equal(hasTransferSourceTask([{ id: 12 }, { id: 41 }], '41'), true);
   assert.equal(hasTransferSourceTask([{ id: 12 }], '41'), false);
   assert.equal(hasTransferSourceTask([{ id: 41 }], ''), false);
+});
+
+test('keeps only server-confirmed available tasks as transfer-learning sources', () => {
+  const tasks = [
+    { id: 12, status: 'completed', model_available: true, output_model_path: 'D:/models/valid.pth' },
+    { id: 13, status: 'completed', model_available: false, output_model_path: 'D:/models/missing.pth' },
+    { id: 14, status: 'running', model_available: false, output_model_path: 'D:/models/running.pth' },
+    { id: 15, status: 'completed', output_model_path: 'D:/models/legacy.pth' },
+  ];
+
+  assert.deepEqual(getAvailableTransferSourceTasks(tasks), [tasks[0]]);
 });

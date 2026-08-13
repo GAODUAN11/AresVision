@@ -72,7 +72,7 @@ function addItem(items, label, value) {
 
 export function getCompletedTrainingModelOptions(tasks = []) {
   return (Array.isArray(tasks) ? tasks : [])
-    .filter((task) => task?.status === 'completed' && Boolean(task?.output_model_path))
+    .filter((task) => task?.status === 'completed' && task?.model_available === true)
     .map((task) => ({
       id: Number(task.id),
       label: task.custom_model_name || `Task #${task.id}`,

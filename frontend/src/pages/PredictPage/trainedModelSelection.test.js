@@ -8,12 +8,14 @@ import {
   parseTrainingTaskHandoff,
 } from './trainedModelSelection.js';
 
-test('keeps only completed training tasks with output weights as prediction model options', () => {
+test('keeps only server-confirmed available training tasks as prediction model options', () => {
   const tasks = [
-    { id: 1, status: 'completed', output_model_path: 'D:/models/a.pth', custom_model_name: 'Dust run' },
-    { id: 2, status: 'running', output_model_path: 'D:/models/b.pth', custom_model_name: 'Running run' },
-    { id: 3, status: 'completed', output_model_path: '', custom_model_name: 'No weights' },
-    { id: 4, status: 'completed', output_model_path: 'D:/models/c.pth', custom_model_name: '' },
+    { id: 1, status: 'completed', model_available: true, output_model_path: 'D:/models/a.pth', custom_model_name: 'Dust run' },
+    { id: 2, status: 'running', model_available: false, output_model_path: 'D:/models/b.pth', custom_model_name: 'Running run' },
+    { id: 3, status: 'completed', model_available: false, output_model_path: '', custom_model_name: 'No weights' },
+    { id: 4, status: 'completed', model_available: true, output_model_path: 'D:/models/c.pth', custom_model_name: '' },
+    { id: 5, status: 'completed', model_available: false, output_model_path: 'D:/models/missing.pth', custom_model_name: 'Historical broken task' },
+    { id: 6, status: 'completed', output_model_path: 'D:/models/legacy.pth', custom_model_name: 'No availability field' },
   ];
 
   assert.deepEqual(getCompletedTrainingModelOptions(tasks), [

@@ -80,24 +80,33 @@ export function getCompletedTrainingModelOptions(tasks = []) {
     }));
 }
 
-export function buildTrainingTaskHandoff(task) {
+export function buildTrainingTaskHandoff(task, scope) {
   const taskId = Number(task?.id);
-  if (!Number.isFinite(taskId) || taskId <= 0) return null;
+  if (!Number.isFinite(taskId)
+    || taskId <= 0
+    || typeof scope !== 'string'
+    || !scope.startsWith('user:')) return null;
   return {
     taskId,
     modelName: task?.custom_model_name || `Task #${taskId}`,
+    scope,
   };
 }
 
-export function parseTrainingTaskHandoff(raw) {
+export function parseTrainingTaskHandoff(raw, expectedScope) {
   if (!raw) return null;
   try {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const taskId = Number(parsed?.taskId);
-    if (!Number.isFinite(taskId) || taskId <= 0) return null;
+    if (!Number.isFinite(taskId)
+      || taskId <= 0
+      || typeof expectedScope !== 'string'
+      || !expectedScope.startsWith('user:')
+      || parsed?.scope !== expectedScope) return null;
     return {
       taskId,
       modelName: parsed?.modelName || `Task #${taskId}`,
+      scope: expectedScope,
     };
   } catch {
     return null;

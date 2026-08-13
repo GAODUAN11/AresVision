@@ -1,5 +1,8 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  useLayoutEffect,
+} from 'react';
+import {
   Background,
   Controls,
   MiniMap,
@@ -13,6 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import C from '../../../constants/colors';
+import { useAuth } from '../../../contexts/AuthContext';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { useToast } from '../../../contexts/ToastContext';
 import {
@@ -21,7 +25,8 @@ import {
   fetchPredictMetrics,
   runPrediction,
 } from '../../../services/api';
-import { setPredictCache } from '../../../stores/predictCache';
+import { resolvePredictCacheScope, setPredictCache } from '../../../stores/predictCache';
+import { isAbortError } from '../predictRequestCoordinator';
 import PredictDisplay from '../PredictDisplay';
 import PredictMetrics from '../PredictMetrics';
 import ErrorDistributionChart from '../ErrorDistributionChart';
@@ -80,6 +85,8 @@ function resolveInitialState(initialGraph, initialConfig) {
 }
 
 function WorkflowCanvasInner({ initialGraph, initialConfig }) {
+  const { user, isLoading } = useAuth();
+  const predictScope = resolvePredictCacheScope({ user, isLoading });
   const { settings } = useSettings();
   const { showToast } = useToast();
   const reactFlowWrapper = useRef(null);
@@ -102,6 +109,9 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
   const [pfiLoading, setPfiLoading] = useState(false);
   const [runError, setRunError] = useState('');
   const [showShapley, setShowShapley] = useState(false);
+  const predictScopeRef = useRef(predictScope);
+  const [cacheScope, setCacheScope] = useState(null);
+  const requestControllerRef = useRef(null);
 
   const precision = settings.precision;
   const ozoneUnit = settings.units.ozone;
@@ -157,15 +167,41 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
 
   const enabledOutputs = new Set(predictionConfig?.enabledOutputs || []);
 
+  useLayoutEffect(() => {
+    if (predictScopeRef.current === predictScope) return;
+    requestControllerRef.current?.abort();
+    predictScopeRef.current = predictScope;
+    setCacheScope(null);
+    const resetState = resolveInitialState(null, null);
+    setNodes(resetState.graph.nodes);
+    setEdges(resetState.graph.edges);
+    setWorkflowConfigState(resetState.config);
+    setWorkflowSelection({ nodeId: null, edgeIds: [] });
+    setResults(null);
+    setMetrics(null);
+    setErrorDistData(null);
+    setPfiData(null);
+    setActiveHorizon(0);
+    setLoading(false);
+    setPfiLoading(false);
+    setRunError('');
+    setShowShapley(false);
+  }, [predictScope, setEdges, setNodes, setWorkflowSelection]);
+
   useEffect(() => {
-    setPredictCache({
+    setCacheScope(predictScope);
+  }, [predictScope]);
+
+  useEffect(() => {
+    if (!cacheScope || cacheScope !== predictScope) return;
+    setPredictCache(cacheScope, {
       workflowGraph: {
         nodes,
         edges,
       },
       workflowConfig,
     });
-  }, [edges, nodes, workflowConfig]);
+  }, [cacheScope, edges, nodes, predictScope, workflowConfig]);
 
   const markOutputs = useCallback((status, outputIds = []) => {
     setNodes((current) => current.map((node) => {
@@ -238,8 +274,10 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
     setErrorDistData(null);
     setPfiData(null);
     setRunError('');
-    setPredictCache({ workflowGraph: initial, workflowConfig: nextConfig });
-  }, [setEdges, setNodes, setWorkflowSelection]);
+    if (cacheScope === predictScope) {
+      setPredictCache(cacheScope, { workflowGraph: initial, workflowConfig: nextConfig });
+    }
+  }, [cacheScope, predictScope, setEdges, setNodes, setWorkflowSelection]);
 
   const handleAutoArrange = useCallback(() => {
     setNodes((current) => autoArrangeWorkflow(current));
@@ -301,6 +339,11 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
       return;
     }
 
+    requestControllerRef.current?.abort();
+    const requestController = new AbortController();
+    const requestScope = predictScope;
+    requestControllerRef.current = requestController;
+
     setRunError('');
     setLoading(true);
     setPfiLoading(true);
@@ -313,26 +356,40 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
     try {
       const needsMetrics = compiled.enabledOutputs.includes(WORKFLOW_OUTPUTS.METRICS);
       const [predResult, metricsResult] = await Promise.all([
-        runPrediction(compiled.body, { dataSource: compiled.dataSource }),
-        needsMetrics ? fetchPredictMetrics(compiled.body, { dataSource: compiled.dataSource }) : Promise.resolve(null),
+        runPrediction(compiled.body, {
+          dataSource: compiled.dataSource,
+          signal: requestController.signal,
+        }),
+        needsMetrics
+          ? fetchPredictMetrics(compiled.body, {
+              dataSource: compiled.dataSource,
+              signal: requestController.signal,
+            })
+          : Promise.resolve(null),
       ]);
+      if (requestScope !== predictScopeRef.current || requestController.signal.aborted) return;
 
       let errorDistResult = null;
       let pfiResult = null;
       if (compiled.dataSource === 'default') {
         const auxJobs = [];
         if (compiled.enabledOutputs.includes(WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION)) {
-          auxJobs.push(fetchErrorDistribution(compiled.selectedVariables));
+          auxJobs.push(fetchErrorDistribution(compiled.selectedVariables, {
+            signal: requestController.signal,
+          }));
         } else {
           auxJobs.push(Promise.resolve(null));
         }
         if (compiled.enabledOutputs.includes(WORKFLOW_OUTPUTS.PFI)) {
-          auxJobs.push(fetchPermutationImportance(compiled.selectedVariables));
+          auxJobs.push(fetchPermutationImportance(compiled.selectedVariables, {
+            signal: requestController.signal,
+          }));
         } else {
           auxJobs.push(Promise.resolve(null));
         }
         [errorDistResult, pfiResult] = await Promise.all(auxJobs);
       }
+      if (requestScope !== predictScopeRef.current || requestController.signal.aborted) return;
 
       setResults(predResult);
       setMetrics(metricsResult);
@@ -342,15 +399,20 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
       markOutputs('success', compiled.enabledOutputs);
       showToast(text.toasts.completed, 'success');
     } catch (error) {
+      if (requestScope !== predictScopeRef.current
+        || requestController.signal.aborted
+        || isAbortError(error)) return;
       const message = error.message || text.errors.predictionFailed;
       setRunError(message);
       markOutputs('failed', compiled.enabledOutputs);
       showToast(message, 'error');
     } finally {
+      if (requestScope !== predictScopeRef.current
+        || requestControllerRef.current !== requestController) return;
       setLoading(false);
       setPfiLoading(false);
     }
-  }, [edges, markOutputs, nodes, showToast, text, workflowConfig]);
+  }, [edges, markOutputs, nodes, predictScope, showToast, text, workflowConfig]);
 
   const handleSendToTraining = useCallback(() => {
     let draft;

@@ -17,7 +17,7 @@ test('prediction page derives and clamps the horizon from selected trained model
   assert.match(pageSource, /selectedCompareTrainingTasks/);
   assert.match(pageSource, /setPredStep\(\(current\)\s*=>\s*clampPredictionHorizon\(current, predictionHorizonLimit\)\)/);
   assert.match(pageSource, /predictionHorizonLimit=\{predictionHorizonLimit\}/);
-  assert.match(pageSource, /performanceData,\s*predictionHorizonLimit,\s*predStep,/);
+  assert.match(pageSource, /performanceData,\s*performanceKey,\s*predictionHorizonLimit,\s*predStep,/);
 });
 
 test('prediction sidebar uses a model-bound numeric horizon control', () => {
@@ -26,7 +26,7 @@ test('prediction sidebar uses a model-bound numeric horizon control', () => {
   assert.match(sidebarSource, /min="1"/);
   assert.match(sidebarSource, /max=\{predictionHorizonLimit\}/);
   assert.match(sidebarSource, /clampPredictionHorizon\(event\.target\.value, predictionHorizonLimit\)/);
-  assert.match(sidebarSource, /disabled=\{predictionHorizonLimit == null\}/);
+  assert.match(sidebarSource, /disabled=\{requestContextLocked \|\| predictionHorizonLimit == null\}/);
 });
 
 test('prediction action is disabled without a valid trained-model horizon', () => {

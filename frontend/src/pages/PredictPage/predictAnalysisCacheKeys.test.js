@@ -5,26 +5,81 @@ import {
   buildErrorDistributionKey,
   buildTrainingModelCompareKey,
   buildPermutationImportanceKey,
+  buildPredictionContextKey,
   buildPredictMetricsKey,
+  isPredictionCacheContextCurrent,
+  normalizePredictionContext,
 } from './predictAnalysisCacheKeys.js';
 
-test('trained model metrics and distribution keys ignore repeated Ls changes', () => {
-  const base = {
+const TRAINED_CONTEXT = {
+  modelMode: 'trained',
+  trainingTaskId: 42,
+  horizon: 3,
+  selectedVars: ['Temperature', 'U_Wind'],
+  marsYear: 27,
+  lsStart: 90,
+};
+
+test('prediction context normalizes selected variables without dropping request parameters', () => {
+  assert.deepEqual(normalizePredictionContext({
+    ...TRAINED_CONTEXT,
+    selectedVars: [' U_Wind ', 'Temperature', 'U_Wind', ''],
+  }), {
     modelMode: 'trained',
     trainingTaskId: 42,
     horizon: 3,
-    selectedVars: ['Temperature'],
     marsYear: 27,
     lsStart: 90,
+    selectedVars: ['Temperature', 'U_Wind'],
+  });
+});
+
+test('prediction context key is stable for reordered variables', () => {
+  assert.equal(
+    buildPredictionContextKey(TRAINED_CONTEXT),
+    buildPredictionContextKey({
+      ...TRAINED_CONTEXT,
+      selectedVars: ['U_Wind', 'Temperature', 'Temperature'],
+    })
+  );
+});
+
+test('prediction context key changes with every critical single-model parameter', () => {
+  const key = buildPredictionContextKey(TRAINED_CONTEXT);
+  const changes = [
+    { modelMode: 'system' },
+    { trainingTaskId: 43 },
+    { horizon: 2 },
+    { marsYear: 28 },
+    { lsStart: 91 },
+    { selectedVars: ['Temperature'] },
+  ];
+
+  changes.forEach((change) => {
+    assert.notEqual(key, buildPredictionContextKey({ ...TRAINED_CONTEXT, ...change }));
+  });
+});
+
+test('prediction cache context only matches an exact current request context', () => {
+  const key = buildPredictionContextKey(TRAINED_CONTEXT);
+
+  assert.equal(isPredictionCacheContextCurrent(key, TRAINED_CONTEXT), true);
+  assert.equal(isPredictionCacheContextCurrent(key, { ...TRAINED_CONTEXT, trainingTaskId: 43 }), false);
+  assert.equal(isPredictionCacheContextCurrent(null, TRAINED_CONTEXT), false);
+});
+
+test('trained model analysis keys follow the complete request context', () => {
+  const base = {
+    ...TRAINED_CONTEXT,
   };
 
-  assert.equal(
+  assert.notEqual(
     buildPredictMetricsKey(base),
-    buildPredictMetricsKey({ ...base, lsStart: 180, selectedVars: ['U_Wind'] })
+    buildPredictMetricsKey({ ...base, lsStart: 180 })
   );
-  assert.equal(
+  assert.notEqual(
     buildErrorDistributionKey(base),
-    buildErrorDistributionKey({ ...base, lsStart: 180, selectedVars: ['U_Wind'] })
+    buildErrorDistributionKey({ ...base, selectedVars: ['U_Wind'] })
   );
 });
 
@@ -42,7 +97,7 @@ test('trained model permutation importance key changes when selected variables c
   );
 });
 
-test('system distribution key ignores Ls but follows selected variables', () => {
+test('system distribution key normalizes variables and follows the complete context', () => {
   assert.equal(
     buildErrorDistributionKey({
       modelMode: 'system',
@@ -66,6 +121,23 @@ test('system distribution key ignores Ls but follows selected variables', () => 
       modelMode: 'system',
       dataSourceMode: 'default',
       selectedVars: ['U_Wind'],
+    })
+  );
+
+  assert.notEqual(
+    buildErrorDistributionKey({
+      modelMode: 'system',
+      selectedVars: ['Temperature'],
+      marsYear: 27,
+      lsStart: 90,
+      horizon: 3,
+    }),
+    buildErrorDistributionKey({
+      modelMode: 'system',
+      selectedVars: ['Temperature'],
+      marsYear: 27,
+      lsStart: 91,
+      horizon: 3,
     })
   );
 });

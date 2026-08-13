@@ -28,18 +28,22 @@ test('builds and parses training task handoff payloads', () => {
   const payload = buildTrainingTaskHandoff({
     id: 7,
     custom_model_name: 'MY27 UVDST',
-  });
+  }, 'user:101');
 
-  assert.deepEqual(parseTrainingTaskHandoff(JSON.stringify(payload)), {
+  assert.deepEqual(parseTrainingTaskHandoff(JSON.stringify(payload), 'user:101'), {
     taskId: 7,
     modelName: 'MY27 UVDST',
+    scope: 'user:101',
   });
+  assert.equal(parseTrainingTaskHandoff(JSON.stringify(payload), 'user:202'), null);
+  assert.equal(parseTrainingTaskHandoff(JSON.stringify(payload), 'anonymous'), null);
 });
 
 test('ignores invalid training task handoff payloads', () => {
   assert.equal(parseTrainingTaskHandoff(''), null);
   assert.equal(parseTrainingTaskHandoff('not json'), null);
   assert.equal(parseTrainingTaskHandoff(JSON.stringify({ taskId: 'abc' })), null);
+  assert.equal(buildTrainingTaskHandoff({ id: 7 }, null), null);
 });
 
 test('builds display parameters from selected trained model task hyperparameters', () => {

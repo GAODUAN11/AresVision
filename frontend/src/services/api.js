@@ -3,6 +3,8 @@
  * Vite proxy: 前端 /api/* → localhost:8000/api/*
  */
 
+import { endAuthenticatedPredictionSession } from '../stores/authPredictionSession.js';
+
 const BASE = '/api';
 
 // ─── 认证工具 ───
@@ -19,6 +21,7 @@ async function authedFetch(url, options = {}) {
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
     // token 过期或无效，清除本地状态，触发全局事件让 AuthContext 响应
+    endAuthenticatedPredictionSession();
     localStorage.removeItem('aresvision_token');
     window.dispatchEvent(new Event('aresvision:logout'));
   }
@@ -314,6 +317,7 @@ export async function runPrediction(body, options = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: options.signal,
   });
   if (!res.ok) await throwResponseError(res);
   return res.json();
@@ -325,6 +329,7 @@ export async function fetchPredictMetrics(body, options = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: options.signal,
   });
   if (!res.ok) await throwResponseError(res);
   return res.json();
@@ -343,6 +348,7 @@ export async function fetchPerformanceCurve(body, options = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: options.signal,
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
@@ -355,6 +361,7 @@ export async function fetchPerformanceComparison(configs, options = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ configs }),
+    signal: options.signal,
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
@@ -391,7 +398,9 @@ export async function fetchErrorDistribution(vars = [], options = {}) {
   const params = new URLSearchParams({ vars: varsStr });
   if (options.trainingTaskId) params.set('training_task_id', String(options.trainingTaskId));
   if (options.horizon != null) params.set('horizon', String(options.horizon));
-  const res = await authedFetch(`${BASE}/predict/error-distribution?${params.toString()}`);
+  const res = await authedFetch(`${BASE}/predict/error-distribution?${params.toString()}`, {
+    signal: options.signal,
+  });
   if (!res.ok) await throwResponseError(res);
   return res.json();
 }
@@ -404,6 +413,7 @@ export async function compareTrainingModels(taskIds, options = {}) {
       task_ids: taskIds,
       horizon: options.horizon ?? 3,
     }),
+    signal: options.signal,
   });
   if (!res.ok) await throwResponseError(res);
   return res.json();
@@ -417,6 +427,7 @@ export async function compareTrainingModelErrorDistributions(taskIds, options = 
       task_ids: taskIds,
       horizon: options.horizon ?? 3,
     }),
+    signal: options.signal,
   });
   if (!res.ok) await throwResponseError(res);
   return res.json();
@@ -430,6 +441,7 @@ export async function compareTrainingModelPfi(taskIds, options = {}) {
       task_ids: taskIds,
       horizon: options.horizon ?? 3,
     }),
+    signal: options.signal,
   });
   if (!res.ok) await throwResponseError(res);
   return res.json();
@@ -442,7 +454,9 @@ export async function fetchPermutationImportance(vars = [], options = {}) {
   if (options.marsYear != null) params.set('mars_year', String(options.marsYear));
   if (options.lsStart != null) params.set('ls_start', String(options.lsStart));
   if (options.horizon != null) params.set('horizon', String(options.horizon));
-  const res = await authedFetch(`${BASE}/predict/permutation-importance?${params.toString()}`);
+  const res = await authedFetch(`${BASE}/predict/permutation-importance?${params.toString()}`, {
+    signal: options.signal,
+  });
   if (!res.ok) await throwResponseError(res);
   return res.json();
 }

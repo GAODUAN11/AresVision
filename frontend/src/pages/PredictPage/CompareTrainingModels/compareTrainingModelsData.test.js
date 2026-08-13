@@ -7,8 +7,17 @@ import {
   buildCompareParameterRows,
   buildPfiMatrix,
   buildStepCurveTraces,
+  getCompareSelectionState,
   sortCompareItems,
 } from './compareTrainingModelsData.js';
+
+test('comparison selection sorts and deduplicates valid task ids', () => {
+  assert.deepEqual(getCompareSelectionState([23, '12', 23, -1, 'bad', 18]), {
+    ids: [12, 18, 23],
+    canCompare: true,
+    count: 3,
+  });
+});
 
 test('builds model summary text from a completed training task', () => {
   const task = {

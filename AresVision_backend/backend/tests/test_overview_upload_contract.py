@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xarray as xr
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -13,6 +14,8 @@ from services.overview_upload_contract import (  # noqa: E402
     normalize_overview_upload_dataset,
     validate_overview_upload_dataset,
 )
+
+KG_M2_PER_UM_ATM_O3 = 2.14e-6
 
 
 def _grid_coords(lat_points=36, lon_points=72):
@@ -79,6 +82,48 @@ def test_reference_mcd_upload_normalizes_raw_download_fields_for_data_overview()
     assert normalized["lat"].shape == (36,)
     assert normalized["lon"].shape == (72,)
     assert normalized["mars_year"] == 34
+
+
+def test_reference_mcd_upload_converts_raw_o3col_kg_m2_to_um_atm():
+    coords = _grid_coords(lat_points=37, lon_points=72)
+    raw_shape = (16, 37, 72)
+    ds = xr.Dataset(
+        data_vars={
+            "LS": (("time",), np.linspace(10.0, 20.0, raw_shape[0], dtype=np.float32)),
+            "O3COL": (("time", "lat", "lon"), np.full(raw_shape, 5.0 * KG_M2_PER_UM_ATM_O3, dtype=np.float32)),
+            "T": (("time", "lat", "lon"), np.full(raw_shape, 180.0, dtype=np.float32)),
+            "U": (("time", "lat", "lon"), np.full(raw_shape, 5.0, dtype=np.float32)),
+            "V": (("time", "lat", "lon"), np.full(raw_shape, 2.0, dtype=np.float32)),
+            "FSDS": (("time", "lat", "lon"), np.full(raw_shape, 90.0, dtype=np.float32)),
+            "PS": (("time", "lat", "lon"), np.full(raw_shape, 6.0, dtype=np.float32)),
+        },
+        coords={**coords, "time": np.arange(raw_shape[0], dtype=np.int32)},
+        attrs={"mars_year": 34},
+    )
+    ds["O3COL"].attrs["units"] = "kg m-2"
+
+    normalized = normalize_overview_upload_dataset(ds)
+
+    assert float(normalized["o3col"].mean()) == pytest.approx(5.0, rel=1e-5)
+
+
+def test_ready_mcd_upload_converts_tiny_legacy_o3col_to_um_atm():
+    coords = _grid_coords()
+    ds = xr.Dataset(
+        data_vars={
+            "Ls": (("time",), np.array([10.0, 20.0], dtype=np.float32)),
+            "o3col": (("time", "lat", "lon"), _field(6.0 * KG_M2_PER_UM_ATM_O3)),
+            "Temperature": (("time", "lat", "lon"), _field(180.0)),
+            "U_Wind": (("time", "lat", "lon"), _field(5.0)),
+            "V_Wind": (("time", "lat", "lon"), _field(2.0)),
+            "Solar_Flux_DN": (("time", "lat", "lon"), _field(90.0)),
+        },
+        coords=coords,
+    )
+
+    normalized = normalize_overview_upload_dataset(ds, filename="MCD_MY34_overview.nc")
+
+    assert float(normalized["o3col"].mean()) == pytest.approx(6.0, rel=1e-5)
 
 
 def test_ready_mcd_upload_sorts_ozone_and_environment_fields_together():

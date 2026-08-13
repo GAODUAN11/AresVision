@@ -25,6 +25,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from config import MCD_DIR, MCD_OVERVIEW_DIR, SUPPORTED_MARS_YEARS  # noqa: E402
 from core.data_align import unwrap_ls  # noqa: E402
+from services.ozone_units import OZONE_COLUMN_UNIT, normalize_ozone_column_units  # noqa: E402
 
 REFERENCE_FIELD_MAP = {
     "o3col": "O3COL",
@@ -183,7 +184,11 @@ def build_overview_dataset(base_mcd_path: Path, ozone_ref_path: Path, output_pat
         target_lon = np.asarray(base_ds["lon"].values, dtype=np.float32)
 
         ozone_by_ls = interpolate_reference_ozone(
-            np.asarray(ref_ds["O3COL"].values, dtype=np.float32),
+            normalize_ozone_column_units(
+                ref_ds["O3COL"].values,
+                ref_ds["O3COL"].attrs.get("units"),
+                allow_mcd_legacy_heuristic=True,
+            ),
             np.asarray(ref_ds["LS"].values, dtype=np.float32),
             target_ls,
         )
@@ -211,6 +216,7 @@ def build_overview_dataset(base_mcd_path: Path, ozone_ref_path: Path, output_pat
                 "base_mcd_source": str(base_mcd_path),
             },
         )
+        out["o3col"].attrs["units"] = OZONE_COLUMN_UNIT
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         out.to_netcdf(output_path)
@@ -237,6 +243,12 @@ def build_overview_from_reference_dataset(reference_path: Path, output_path: Pat
             if input_name not in ref_ds:
                 raise ValueError(f"{reference_path} missing required field: {input_name}")
             daily_field = _mean_by_sample_group(ref_ds[input_name].values)
+            if output_name == "o3col":
+                daily_field = normalize_ozone_column_units(
+                    daily_field,
+                    ref_ds[input_name].attrs.get("units"),
+                    allow_mcd_legacy_heuristic=True,
+                )
             daily_vars[output_name] = _regrid_latitude_safe(daily_field, source_lat, target_lat)
 
         # Downloaded MCD reference files do not include a dust field; keep it explicit and sparse.
@@ -263,6 +275,7 @@ def build_overview_from_reference_dataset(reference_path: Path, output_path: Pat
                 "dust_note": "Dust_Optical_Depth is NaN because the downloaded reference MCD file does not contain a dust field.",
             },
         )
+        out["o3col"].attrs["units"] = OZONE_COLUMN_UNIT
         output_path.parent.mkdir(parents=True, exist_ok=True)
         out.to_netcdf(output_path)
         return output_path

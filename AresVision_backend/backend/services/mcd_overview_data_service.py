@@ -26,6 +26,7 @@ from config import (
     SUPPORTED_MARS_YEARS,
 )
 from services.data_service import DataService
+from services.ozone_units import normalize_ozone_column_units
 
 logger = logging.getLogger("aresvision.mcd_overview")
 MAX_COVERAGE_GAP_LS = 30.0
@@ -96,7 +97,11 @@ class McdOverviewDataService:
                 raise ValueError(f"{file_path} missing required fields: {missing}")
 
             data = {
-                "o3col": np.asarray(ds["o3col"].values, dtype=np.float32),
+                "o3col": normalize_ozone_column_units(
+                    ds["o3col"].values,
+                    ds["o3col"].attrs.get("units"),
+                    allow_mcd_legacy_heuristic=True,
+                ),
                 "ls": np.asarray(ds["Ls"].values, dtype=np.float32),
                 "lat": np.asarray(ds["lat"].values, dtype=np.float32),
                 "lon": np.asarray(ds["lon"].values, dtype=np.float32),
@@ -182,7 +187,11 @@ class McdOverviewDataService:
                     self.raw_hourly_mcd[mars_year] = None
                     return None
 
-                ozone = np.asarray(ds[ozone_name].values, dtype=np.float32)
+                ozone = normalize_ozone_column_units(
+                    ds[ozone_name].values,
+                    ds[ozone_name].attrs.get("units"),
+                    allow_mcd_legacy_heuristic=True,
+                )
                 ls_values = np.asarray(ds[ls_name].values, dtype=np.float32)
                 if ozone.ndim != 3 or ls_values.ndim != 1:
                     logger.warning("Raw 3h MCD file has unsupported dimensions: %s", file_path)

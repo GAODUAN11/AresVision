@@ -11,6 +11,8 @@ if str(BACKEND_DIR) not in sys.path:
 from services.data_service import DataService  # noqa: E402
 from services.mcd_overview_data_service import McdOverviewDataService  # noqa: E402
 
+KG_M2_PER_UM_ATM_O3 = 2.14e-6
+
 
 def test_overview_service_exposes_reference_mcd_ozone_and_env_fields():
     base = DataService()
@@ -50,16 +52,17 @@ class FakeBaseDataService:
         raise ValueError(f"MY{mars_year} runtime MCD missing")
 
 
-def write_overview_nc(path: Path, year: int, ls_values=None):
+def write_overview_nc(path: Path, year: int, ls_values=None, ozone_values=None, ozone_units=None):
     ls_arr = np.asarray(ls_values or [10.0, 12.0], dtype=np.float32)
     lat = np.array([2.5, -2.5], dtype=np.float32)
     lon = np.array([-180.0, -175.0], dtype=np.float32)
     shape = (len(ls_arr), len(lat), len(lon))
     base = np.arange(np.prod(shape), dtype=np.float32).reshape(shape) + year
+    ozone = np.asarray(ozone_values, dtype=np.float32) if ozone_values is not None else base
     ds = xr.Dataset(
         data_vars={
             "Ls": (("time",), ls_arr),
-            "o3col": (("time", "lat", "lon"), base),
+            "o3col": (("time", "lat", "lon"), ozone),
             "Pressure": (("time", "lat", "lon"), base + 1),
             "Temperature": (("time", "lat", "lon"), base + 2),
             "U_Wind": (("time", "lat", "lon"), base + 3),
@@ -69,6 +72,8 @@ def write_overview_nc(path: Path, year: int, ls_values=None):
         },
         coords={"time": np.arange(len(ls_arr)), "lat": lat, "lon": lon},
     )
+    if ozone_units:
+        ds["o3col"].attrs["units"] = ozone_units
     ds.to_netcdf(path)
     ds.close()
 
@@ -97,7 +102,8 @@ def write_raw_3h_mcd_nc(path: Path):
     time = np.arange(16, dtype=np.int32)
     lat = np.array([-2.5, 2.5], dtype=np.float32)
     lon = np.array([0.0, 5.0], dtype=np.float32)
-    o3 = np.arange(16 * 2 * 2, dtype=np.float32).reshape(16, 2, 2)
+    o3_um_atm = np.arange(16 * 2 * 2, dtype=np.float32).reshape(16, 2, 2)
+    o3 = o3_um_atm * KG_M2_PER_UM_ATM_O3
     ds = xr.Dataset(
         data_vars={
             "O3COL": (("time", "lat", "lon"), o3),
@@ -106,6 +112,7 @@ def write_raw_3h_mcd_nc(path: Path):
         },
         coords={"time": time, "lat": lat, "lon": lon},
     )
+    ds["O3COL"].attrs["units"] = "kg m-2"
     ds.to_netcdf(path)
     ds.close()
 
@@ -120,6 +127,30 @@ def test_overview_service_discovers_years_from_overview_files(tmp_path):
 
     assert service.get_available_years() == [34]
     assert service.get_openmars_data(34)["o3col"].shape == (2, 2, 2)
+
+
+def test_overview_service_converts_mcd_o3col_kg_m2_to_um_atm(tmp_path):
+    overview_dir = tmp_path / "mcd_overview"
+    nomad_dir = tmp_path / "nomad"
+    overview_dir.mkdir()
+    ozone = np.full((2, 2, 2), 3.0 * KG_M2_PER_UM_ATM_O3, dtype=np.float32)
+    write_overview_nc(overview_dir / "MCD_MY34_overview.nc", 34, ozone_values=ozone, ozone_units="kg m-2")
+
+    service = McdOverviewDataService(FakeBaseDataService(), overview_dir=overview_dir, nomad_dir=nomad_dir)
+
+    np.testing.assert_allclose(service.get_openmars_data(34)["o3col"], 3.0, rtol=1e-5)
+
+
+def test_overview_service_converts_legacy_tiny_mcd_o3col_without_units(tmp_path):
+    overview_dir = tmp_path / "mcd_overview"
+    nomad_dir = tmp_path / "nomad"
+    overview_dir.mkdir()
+    ozone = np.full((2, 2, 2), 4.0 * KG_M2_PER_UM_ATM_O3, dtype=np.float32)
+    write_overview_nc(overview_dir / "MCD_MY34_overview.nc", 34, ozone_values=ozone)
+
+    service = McdOverviewDataService(FakeBaseDataService(), overview_dir=overview_dir, nomad_dir=nomad_dir)
+
+    np.testing.assert_allclose(service.get_openmars_data(34)["o3col"], 4.0, rtol=1e-5)
 
 
 def test_overlay_payload_includes_nomad_when_sparse_points_match(tmp_path):

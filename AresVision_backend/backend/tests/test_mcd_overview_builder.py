@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
+import numpy as np
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -13,6 +14,8 @@ from scripts.build_mcd_overview_dataset import (  # noqa: E402
     build_overview_dataset,
     build_year,
 )
+
+KG_M2_PER_UM_ATM_O3 = 2.14e-6
 
 
 def _workspace_reference_dir() -> Path:
@@ -70,6 +73,42 @@ def test_build_overview_from_reference_dataset_creates_direct_mcd_overview(tmp_p
         assert float(ds["Ls"].max()) < 360.0
         assert float(ds["o3col"].isnull().mean()) < 0.05
         assert ds.attrs["build_mode"] == "reference_direct"
+    finally:
+        ds.close()
+
+
+def test_build_overview_from_reference_dataset_writes_o3col_in_um_atm(tmp_path):
+    from scripts.build_mcd_overview_dataset import build_overview_from_reference_dataset
+
+    reference_path = tmp_path / "MCD_MY34_global_3h_5deg_10m_ls_lst.nc"
+    output_path = tmp_path / "MCD_MY34_overview.nc"
+    shape = (8, 37, 72)
+    ref = xr.Dataset(
+        data_vars={
+            "LS": (("time",), np.linspace(10.0, 12.0, shape[0], dtype=np.float32)),
+            "O3COL": (("time", "lat", "lon"), np.full(shape, 2.0 * KG_M2_PER_UM_ATM_O3, dtype=np.float32)),
+            "T": (("time", "lat", "lon"), np.full(shape, 180.0, dtype=np.float32)),
+            "U": (("time", "lat", "lon"), np.full(shape, 5.0, dtype=np.float32)),
+            "V": (("time", "lat", "lon"), np.full(shape, 2.0, dtype=np.float32)),
+            "PS": (("time", "lat", "lon"), np.full(shape, 6.0, dtype=np.float32)),
+            "FSDS": (("time", "lat", "lon"), np.full(shape, 90.0, dtype=np.float32)),
+        },
+        coords={
+            "time": np.arange(shape[0], dtype=np.int32),
+            "lat": np.linspace(90.0, -90.0, shape[1], dtype=np.float32),
+            "lon": np.linspace(-180.0, 175.0, shape[2], dtype=np.float32),
+        },
+    )
+    ref["O3COL"].attrs["units"] = "kg m-2"
+    ref.to_netcdf(reference_path)
+    ref.close()
+
+    build_overview_from_reference_dataset(reference_path, output_path)
+
+    ds = xr.open_dataset(output_path)
+    try:
+        assert float(ds["o3col"].mean()) == pytest.approx(2.0, rel=1e-5)
+        assert ds["o3col"].attrs["units"] == "um-atm"
     finally:
         ds.close()
 

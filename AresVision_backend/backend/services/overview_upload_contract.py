@@ -10,6 +10,7 @@ import xarray as xr
 from scipy.interpolate import interp1d
 
 from config import N_LAT, N_LON
+from services.ozone_units import normalize_ozone_column_units
 
 DIRECT_TARGET_LAT = np.arange(87.5, -90.0, -5.0, dtype=np.float32)
 DIRECT_TARGET_LON = np.arange(-180.0, 180.0, 5.0, dtype=np.float32)
@@ -285,7 +286,13 @@ def classify_overview_upload_dataset(ds: xr.Dataset, filename: str = "") -> str 
     return None
 
 
-def _normalize_ozone_source(ds: xr.Dataset, data_type: str, filename: str = "", sort: bool = True) -> dict:
+def _normalize_ozone_source(
+    ds: xr.Dataset,
+    data_type: str,
+    filename: str = "",
+    sort: bool = True,
+    normalize_mcd_ozone: bool = False,
+) -> dict:
     lat_name = _find_name(ds, _LAT_ALIASES)
     lon_name = _find_name(ds, _LON_ALIASES)
     ls_name = _find_name(ds, _LS_ALIASES)
@@ -303,6 +310,12 @@ def _normalize_ozone_source(ds: xr.Dataset, data_type: str, filename: str = "", 
     lon = _values_1d(ds, lon_name)
     ls = _values_1d(ds, ls_name)
     o3 = _daily_mean(ds[o3_name].values)
+    if normalize_mcd_ozone:
+        o3 = normalize_ozone_column_units(
+            o3,
+            ds[o3_name].attrs.get("units"),
+            allow_mcd_legacy_heuristic=True,
+        )
     if o3.shape[0] != ls.shape[0]:
         raise ValueError(f"o3col time dimension {o3.shape[0]} does not match Ls length {ls.shape[0]}")
     if o3.shape[1:] != (lat.shape[0], lon.shape[0]):
@@ -336,7 +349,7 @@ def _normalize_ozone_source(ds: xr.Dataset, data_type: str, filename: str = "", 
 
 
 def _normalize_ready_mcd(ds: xr.Dataset, filename: str = "") -> dict:
-    out = _normalize_ozone_source(ds, "mcd", filename, sort=False)
+    out = _normalize_ozone_source(ds, "mcd", filename, sort=False, normalize_mcd_ozone=True)
     lat_name = _find_name(ds, _LAT_ALIASES)
     lon_name = _find_name(ds, _LON_ALIASES)
     source_lat = _values_1d(ds, lat_name) if lat_name else out["lat"]
@@ -382,6 +395,12 @@ def _normalize_raw_mcd(ds: xr.Dataset, filename: str = "") -> dict:
         if raw_name not in ds.data_vars:
             continue
         daily = _mean_by_sample_group(ds[raw_name].values)
+        if output_name == "o3col":
+            daily = normalize_ozone_column_units(
+                daily,
+                ds[raw_name].attrs.get("units"),
+                allow_mcd_legacy_heuristic=True,
+            )
         data_vars[output_name] = _regrid_latitude(daily, source_lat)
     data_vars["Dust_Optical_Depth"] = np.full_like(data_vars["o3col"], np.nan, dtype=np.float32)
 

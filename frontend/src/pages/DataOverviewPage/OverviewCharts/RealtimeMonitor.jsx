@@ -8,6 +8,7 @@ import { convertOzone, ozoneLabel } from '../../../utils/units';
 import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
+import { formatAdaptiveSeries, formatAdaptiveValue } from './chartValueFormat';
 
 const LAT_BANDS = [
   'Polar North (60N-90N)',
@@ -121,6 +122,10 @@ export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParam
     const peakHour = data.hours[values.indexOf(max)];
     return { max, min, mean, peakHour, amplitude: max - min };
   }, [data]);
+  const ozoneHoverText = useMemo(
+    () => formatAdaptiveSeries(data?.ozone_values || [], { fixedDigits: 4 }),
+    [data],
+  );
 
   const aiInsightProvider = useCallback(() => ({
     card: 'realtime',
@@ -233,21 +238,21 @@ export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParam
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(199,91,57,0.08)', border: '1px solid rgba(199,91,57,0.18)' }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.mean}</div>
           <div style={{ marginTop: 6, color: C.mars, fontSize: 'calc(18px * var(--font-scale, 1))', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
-            {fmtNum(convertOzone(stats.mean, 'um-atm'), 3)}
+            {formatAdaptiveValue(convertOzone(stats.mean, 'um-atm'), { fixedDigits: 3 })}
           </div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{ozoneLabel('um-atm')}</div>
         </div>
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(74,158,255,0.08)', border: '1px solid rgba(74,158,255,0.18)' }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.peak}</div>
           <div style={{ marginTop: 6, color: C.blue, fontSize: 'calc(18px * var(--font-scale, 1))', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
-            {fmtNum(stats.max, 3)}
+            {formatAdaptiveValue(stats.max, { fixedDigits: 3 })}
           </div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{copy.at} {fmtNum(stats.peakHour, 1)}h</div>
         </div>
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(74,207,172,0.08)', border: '1px solid rgba(74,207,172,0.18)' }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.amplitude}</div>
           <div style={{ marginTop: 6, color: '#4acfac', fontSize: 'calc(18px * var(--font-scale, 1))', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
-            {fmtNum(stats.amplitude, 3)}
+            {formatAdaptiveValue(stats.amplitude, { fixedDigits: 3 })}
           </div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{copy.ampDesc}</div>
         </div>
@@ -276,7 +281,8 @@ export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParam
             marker: { size: 7, color: C.blue, line: { color: '#fff', width: 1 } },
             fill: 'tozeroy',
             fillcolor: 'rgba(199,91,57,0.12)',
-            hovertemplate: `${copy.hoverHour} %{x:.1f}<br>${copy.ozone} %{y:.4f} μm-atm<extra></extra>`,
+            customdata: ozoneHoverText,
+            hovertemplate: `${copy.hoverHour} %{x:.1f}<br>${copy.ozone} %{customdata[0]} μm-atm<extra></extra>`,
           }]}
           layout={{
             autosize: true,

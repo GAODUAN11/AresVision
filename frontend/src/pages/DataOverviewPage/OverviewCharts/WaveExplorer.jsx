@@ -6,6 +6,7 @@ import { fetchOverviewZonalAnomaly } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
 import WaveBandDiagnosticsChart from './WaveBandDiagnosticsChart';
+import { formatAdaptiveMatrix } from './chartValueFormat';
 
 export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
   const { settings } = useSettings();
@@ -85,6 +86,7 @@ export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
 
   const hasHeatmap = Boolean(data?.x?.length && data?.y?.length && data?.z?.length);
   const maxAbs = hasHeatmap ? Math.max(Math.abs(data.min || 0), Math.abs(data.max || 0)) : 0;
+  const hoverZ = hasHeatmap ? formatAdaptiveMatrix(data.z, { fixedDigits: 3 }) : [];
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -104,10 +106,12 @@ export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
                 z: data.z,
                 x: data.x,
                 y: data.y,
+                customdata: hoverZ,
                 type: 'heatmap',
                 colorscale: 'RdBu',
                 zmin: -maxAbs,
                 zmax: maxAbs,
+                hovertemplate: `${copy.lonAxis}: %{x:.1f}<br>${copy.latAxis}: %{y:.1f}<br>${copy.colorbarTitle}: %{customdata}<extra></extra>`,
                 colorbar: {
                   title: copy.colorbarTitle,
                   titleside: 'right',

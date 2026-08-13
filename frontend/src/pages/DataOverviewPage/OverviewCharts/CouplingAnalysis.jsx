@@ -6,6 +6,7 @@ import { fetchOverviewCouplingData } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { correlation, roundValue, sampleSeries, summarizeSeries } from './aiInsight';
 import { movingAverageSeries } from './chartSeries';
+import { formatAdaptiveSeries } from './chartValueFormat';
 
 const SMOOTH_WINDOW = 21;
 
@@ -83,6 +84,11 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
     };
   }, [data]);
 
+  const ozoneHoverText = useMemo(() => ({
+    raw: formatAdaptiveSeries(data?.var1 || [], { fixedDigits: 3 }),
+    smoothed: formatAdaptiveSeries(smoothedData?.ozone || data?.var1 || [], { fixedDigits: 3 }),
+  }), [data, smoothedData]);
+
   const aiInsightProvider = useCallback(() => ({
     card: 'coupling',
     marsYear,
@@ -135,6 +141,8 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
               name: `${copy.ozoneSeries} raw`,
               line: { color: 'rgba(74,158,255,0.24)', width: 1 },
               yaxis: 'y1',
+              customdata: ozoneHoverText.raw,
+              hovertemplate: `${copy.lsAxis}: %{x:.1f}<br>${copy.ozoneSeries}: %{customdata[0]}<extra></extra>`,
               showlegend: false,
             },
             {
@@ -144,7 +152,9 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
               mode: 'lines',
               name: copy.ozoneSeries,
               line: { color: C.blue, width: 3 },
-              yaxis: 'y1'
+              yaxis: 'y1',
+              customdata: ozoneHoverText.smoothed,
+              hovertemplate: `${copy.lsAxis}: %{x:.1f}<br>${copy.ozoneSeries}: %{customdata[0]}<extra></extra>`
             },
             {
               x: data.ls,

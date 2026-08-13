@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
-import { canStartHandTracking, createVideoRefBinder } from './handTrackingLifecycle.js';
+import {
+  canStartHandTracking,
+  createVideoRefBinder,
+  getHandTrackingStartupError,
+} from './handTrackingLifecycle.js';
 import { createHandGestureState, interpretHandGestureFrame } from './handGestureInterpreter.js';
 
 export default function useHandTracking(enabled = false) {
@@ -82,6 +86,11 @@ export default function useHandTracking(enabled = false) {
       try {
         setError(null);
         setIsReady(false);
+        const startupError = getHandTrackingStartupError();
+        if (startupError) {
+          setError(`无法启动手势控制：${startupError}`);
+          return;
+        }
         await initHandLandmarker();
         if (cancelled) return;
         setIsReady(true);

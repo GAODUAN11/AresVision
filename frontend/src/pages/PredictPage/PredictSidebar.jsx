@@ -7,6 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { buildTrainedModelParameterItems } from './trainedModelSelection';
 import { buildCompareModelSummary, getCompareSelectionState } from './CompareTrainingModels/compareTrainingModelsData';
 import { PREDICT_MODEL_MODE_COMPARE, PREDICT_MODEL_MODE_TRAINED } from './predictModelModes';
+import { clampPredictionHorizon } from './predictionHorizon';
 
 const SHORTHAND_MAP = {
   Temperature: 'T',
@@ -474,6 +475,7 @@ export default function PredictSidebar({
   setLsStart,
   predStep,
   setPredStep,
+  predictionHorizonLimit,
   selectedVars,
   toggleVar,
   VARIABLES,
@@ -558,21 +560,48 @@ export default function PredictSidebar({
           <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice50, marginBottom: 8 }}>
             {t('predict.horizon')}
           </div>
-          <OptionChips
-            items={[1, 2, 3].map((s) => ({
-              value: s,
-              label: `+${s}`,
-              color: C.mars,
-            }))}
-            activeValue={predStep}
-            onChange={setPredStep}
+          <input
+            type="number"
+            min="1"
+            max={predictionHorizonLimit}
+            step="1"
+            value={predStep}
+            disabled={predictionHorizonLimit == null}
+            aria-label={t('predict.horizon')}
+            onChange={(event) => {
+              const nextHorizon = clampPredictionHorizon(event.target.value, predictionHorizonLimit);
+              if (nextHorizon != null) setPredStep(nextHorizon);
+            }}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: `1px solid ${C.border}`,
+              background: C.bgMuted,
+              color: C.ice,
+              fontSize: 'calc(13px * var(--font-scale, 1))',
+              fontWeight: 700,
+              fontFamily: 'var(--font-display)',
+              cursor: predictionHorizonLimit == null ? 'not-allowed' : 'text',
+              opacity: predictionHorizonLimit == null ? 0.65 : 1,
+            }}
           />
+          <div style={{ marginTop: 6, color: C.ice40, fontSize: 'calc(10px * var(--font-scale, 1))' }}>
+            {predictionHorizonLimit == null
+              ? (isZh ? '请选择具有有效输出窗口的训练模型' : 'Select a trained model with a valid output horizon')
+              : (isZh ? `当前最大输出窗口：${predictionHorizonLimit}` : `Current maximum: ${predictionHorizonLimit}`)}
+          </div>
         </div>
 
         <div style={{ display: 'grid', gap: 10 }}>
           <ActionButton
             onClick={handlePredict}
-            disabled={loading || isSwitchingSource || (isCompareMode && !compareSelection.canCompare)}
+            disabled={loading
+              || isSwitchingSource
+              || predictionHorizonLimit == null
+              || predStep > predictionHorizonLimit
+              || (isCompareMode && !compareSelection.canCompare)}
             accent={isCompareMode ? C.green : C.mars}
           >
             {(loading || isSwitchingSource) ? (

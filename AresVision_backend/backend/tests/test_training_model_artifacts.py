@@ -1,0 +1,321 @@
+import asyncio
+import json
+import sys
+import types
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+
+sqlalchemy = types.ModuleType("sqlalchemy")
+sqlalchemy.select = lambda *args, **kwargs: None
+sqlalchemy.update = lambda *args, **kwargs: None
+sys.modules.setdefault("sqlalchemy", sqlalchemy)
+
+engine = types.ModuleType("database.engine")
+engine.async_session_maker = None
+sys.modules["database.engine"] = engine
+
+models = types.ModuleType("database.models")
+models.ModelTrainingTask = object
+sys.modules["database.models"] = models
+
+data_service = types.ModuleType("services.data_service")
+data_service.DataService = object
+sys.modules["services.data_service"] = data_service
+
+personal_service = types.ModuleType("services.personal_data_source_service")
+personal_service.PersonalDataSourceService = object
+sys.modules["services.personal_data_source_service"] = personal_service
+
+ws_manager = types.ModuleType("services.ws_manager")
+ws_manager.manager = None
+sys.modules["services.ws_manager"] = ws_manager
+
+metrics = types.ModuleType("core.metrics")
+metrics.compute_error_distribution = lambda *args, **kwargs: {}
+metrics.compute_metrics = lambda *args, **kwargs: {}
+metrics.compute_test_set_metrics = lambda *args, **kwargs: {}
+sys.modules["core.metrics"] = metrics
+
+predict_model = types.ModuleType("core.predict_model")
+predict_model.PredRNNv2 = object
+sys.modules["core.predict_model"] = predict_model
+
+model_zoo = types.ModuleType("training_backbones.model_zoo")
+model_zoo.build_forecaster = lambda *args, **kwargs: None
+model_zoo.normalize_model_architecture = lambda value: value
+model_zoo.normalize_use_sphere = lambda hypers: bool(hypers.get("use_sphere"))
+sys.modules["training_backbones.model_zoo"] = model_zoo
+
+
+from schemas.training import TrainingTaskResponse  # noqa: E402
+from services import inference_service as inference_module  # noqa: E402
+from services import training_service as training_module  # noqa: E402
+
+
+ARTIFACT_ERROR = (
+    "Training process exited successfully but no valid model weight file was produced"
+)
+
+
+class _EmptyStdout:
+    def __init__(self, lines=None):
+        self.lines = iter(lines or [])
+
+    def readline(self):
+        return next(self.lines, "")
+
+    def close(self):
+        return None
+
+
+class _SuccessfulProcess:
+    pid = 4321
+
+    def __init__(self, lines=None):
+        self.stdout = _EmptyStdout(lines)
+
+    def wait(self):
+        return 0
+
+
+class _TaskSession:
+    def __init__(self, task):
+        self.task = task
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, _model, task_id):
+        assert task_id == self.task.id
+        return self.task
+
+    async def commit(self):
+        return None
+
+
+class _BroadcastRecorder:
+    def __init__(self, delay=0):
+        self.messages = []
+        self.delay = delay
+
+    async def broadcast_to_task(self, task_id, message):
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        self.messages.append((task_id, message))
+
+
+def _run_successful_training(
+    monkeypatch,
+    tmp_path,
+    artifact_bytes,
+    *,
+    output_is_directory=False,
+    simulate_delayed_progress=False,
+):
+    output_path = tmp_path / "weights.pth"
+    if output_is_directory:
+        output_path.mkdir()
+    elif artifact_bytes is not None:
+        output_path.write_bytes(artifact_bytes)
+
+    log_file = tmp_path / "training.log"
+    task = SimpleNamespace(
+        id=17,
+        status="pending",
+        total_epochs=0,
+        pid=None,
+        loss_history=None,
+        progress=100.0,
+        end_time=None,
+        metrics=None,
+    )
+    broadcaster = _BroadcastRecorder(delay=0.1 if simulate_delayed_progress else 0)
+    process_lines = ["final epoch\n"] if simulate_delayed_progress else None
+
+    monkeypatch.setattr(training_module, "async_session_maker", lambda: _TaskSession(task))
+    monkeypatch.setattr(
+        training_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: _SuccessfulProcess(process_lines),
+    )
+
+    service = training_module.TrainingService()
+    if simulate_delayed_progress:
+        monkeypatch.setattr(
+            service,
+            "_parse_progress_from_log",
+            lambda *args, **kwargs: {"progress": 100.0},
+        )
+
+        async def delayed_progress_update(_task_id, progress_data, _ws_manager):
+            await asyncio.sleep(0.05)
+            task.progress = progress_data["progress"]
+
+        monkeypatch.setattr(service, "_update_task_progress", delayed_progress_update)
+
+    from services import ws_manager
+
+    monkeypatch.setattr(ws_manager, "manager", broadcaster)
+
+    asyncio.run(
+        service._run_training_subprocess(
+            task_id=task.id,
+            script_name="demo3.py",
+            hyperparameters={"epochs": 2},
+            log_file=log_file,
+            output_path=output_path,
+        )
+    )
+    return task, log_file, broadcaster
+
+
+def test_successful_process_with_valid_weight_completes_task(monkeypatch, tmp_path):
+    task, _log_file, broadcaster = _run_successful_training(
+        monkeypatch, tmp_path, b"non-empty model weights"
+    )
+
+    assert task.status == "completed"
+    assert task.progress == 100.0
+    assert json.loads(task.metrics) == {"note": "completed"}
+    assert broadcaster.messages[-1][1]["status"] == "completed"
+
+
+def test_successful_process_without_weight_fails_task(monkeypatch, tmp_path):
+    task, log_file, broadcaster = _run_successful_training(monkeypatch, tmp_path, None)
+
+    assert task.status == "failed"
+    assert task.progress < 100.0
+    assert ARTIFACT_ERROR in json.loads(task.metrics)["error"]
+    assert ARTIFACT_ERROR in log_file.read_text(encoding="utf-8")
+    assert broadcaster.messages[-1][1]["status"] == "failed"
+
+
+def test_successful_process_with_empty_weight_fails_task(monkeypatch, tmp_path):
+    task, log_file, _broadcaster = _run_successful_training(monkeypatch, tmp_path, b"")
+
+    assert task.status == "failed"
+    assert task.progress < 100.0
+    assert ARTIFACT_ERROR in json.loads(task.metrics)["error"]
+    assert ARTIFACT_ERROR in log_file.read_text(encoding="utf-8")
+
+
+def test_successful_process_with_directory_output_fails_task(monkeypatch, tmp_path):
+    task, _log_file, _broadcaster = _run_successful_training(
+        monkeypatch,
+        tmp_path,
+        None,
+        output_is_directory=True,
+    )
+
+    assert task.status == "failed"
+    assert task.progress < 100.0
+    assert ARTIFACT_ERROR in json.loads(task.metrics)["error"]
+
+
+def test_invalid_artifact_final_state_wins_over_queued_progress_update(monkeypatch, tmp_path):
+    task, _log_file, _broadcaster = _run_successful_training(
+        monkeypatch,
+        tmp_path,
+        None,
+        simulate_delayed_progress=True,
+    )
+
+    assert task.status == "failed"
+    assert task.progress < 100.0
+
+
+def _task_response_payload(output_model_path):
+    return {
+        "id": 29,
+        "model_script": "demo3.py",
+        "status": "completed",
+        "start_time": datetime.now(timezone.utc),
+        "end_time": datetime.now(timezone.utc),
+        "hyperparameters": "{}",
+        "log_file_path": None,
+        "output_model_path": str(output_model_path),
+        "custom_model_name": "Historical broken task",
+        "metrics": None,
+        "progress": 100.0,
+        "current_epoch": 1,
+        "total_epochs": 1,
+        "current_loss": None,
+        "eta": None,
+        "loss_history": None,
+    }
+
+
+def test_historical_completed_task_without_weight_is_unavailable(tmp_path):
+    response = TrainingTaskResponse.model_validate(
+        _task_response_payload(tmp_path / "missing.pth")
+    )
+
+    assert response.model_available is False
+    assert response.model_dump()["model_available"] is False
+
+
+def test_failed_task_with_leftover_weight_is_unavailable(tmp_path):
+    weight_path = tmp_path / "leftover.pth"
+    weight_path.write_bytes(b"stale weights")
+    payload = _task_response_payload(weight_path)
+    payload["status"] = "failed"
+
+    response = TrainingTaskResponse.model_validate(payload)
+
+    assert response.model_available is False
+
+
+def test_inference_rechecks_weight_after_task_list_load(monkeypatch, tmp_path):
+    missing_path = tmp_path / "moved-after-list-load.pth"
+    task = SimpleNamespace(
+        id=31,
+        user_id=7,
+        status="completed",
+        output_model_path=str(missing_path),
+        hyperparameters="{}",
+    )
+
+    monkeypatch.setattr(
+        inference_module,
+        "async_session_maker",
+        lambda: _TaskSession(task),
+    )
+    service = inference_module.InferenceService()
+
+    with pytest.raises(ValueError, match="Model file not found"):
+        asyncio.run(
+            service.predict_task(
+                task_id=task.id,
+                mars_year=27,
+                ls_start=90.0,
+                current_user=SimpleNamespace(id=7, role="user"),
+            )
+        )
+
+
+def test_inference_reports_clear_error_when_weight_disappears_during_load(monkeypatch, tmp_path):
+    model_path = tmp_path / "removed-during-load.pth"
+    model_path.write_bytes(b"weights")
+    task = SimpleNamespace(output_model_path=str(model_path))
+    service = inference_module.InferenceService()
+
+    def remove_then_load(*args, **kwargs):
+        model_path.unlink()
+        raise FileNotFoundError(str(model_path))
+
+    monkeypatch.setattr(inference_module.torch, "load", remove_then_load)
+
+    with pytest.raises(ValueError, match="Model file not found"):
+        service._load_task_state_dict(task)

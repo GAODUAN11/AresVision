@@ -30,6 +30,7 @@ from database.engine import async_session_maker
 from database.models import ModelTrainingTask
 from services.data_service import DataService
 from services.personal_data_source_service import PersonalDataSourceService
+from services.model_artifacts import is_valid_model_weight_file
 from services.training_channels import (
     ARCHITECTURE_PARAM_KEYS,
     UNIFIED_TRAINING_SCRIPT,
@@ -40,6 +41,10 @@ from services.training_paths import build_task_output_path
 import config
 
 logger = logging.getLogger("aresvision.training")
+
+INVALID_MODEL_ARTIFACT_ERROR = (
+    "Training process exited successfully but no valid model weight file was produced"
+)
 
 MODELS_DIR = TRAINING_SCRIPTS_DIR
 LOGS_DIR = Path(__file__).parent.parent / "logs" / "training"
@@ -292,7 +297,7 @@ class TrainingService:
             raise ValueError("Transfer source task must be completed")
 
         weight_path = Path(getattr(source_task, "output_model_path", "") or "")
-        if not weight_path.exists():
+        if not is_valid_model_weight_file(weight_path):
             raise FileNotFoundError("Transfer source task weight file is missing")
 
         source_hypers = self._parse_task_hyperparameters(source_task)
@@ -576,6 +581,7 @@ class TrainingService:
             loop = asyncio.get_event_loop()
 
             loss_history_buf = {"train": [], "val": []}
+            pending_progress_updates = []
             async with async_session_maker() as session:
                 task = await session.get(ModelTrainingTask, task_id)
                 if task and task.loss_history:
@@ -592,15 +598,33 @@ class TrainingService:
 
                         progress_data = self._parse_progress_from_log(line, total_epochs, start_time_ts, loss_history_buf)
                         if progress_data:
-                            asyncio.run_coroutine_threadsafe(
-                                self._update_task_progress(task_id, progress_data, ws_manager),
-                                loop,
+                            pending_progress_updates.append(
+                                asyncio.run_coroutine_threadsafe(
+                                    self._update_task_progress(task_id, progress_data, ws_manager),
+                                    loop,
+                                )
                             )
                     process.stdout.close()
 
             await asyncio.to_thread(read_and_parse_thread)
+            if pending_progress_updates:
+                await asyncio.gather(
+                    *(asyncio.wrap_future(future) for future in pending_progress_updates),
+                    return_exceptions=True,
+                )
             returncode = await asyncio.to_thread(process.wait)
-            status = "completed" if returncode == 0 else "failed"
+            model_artifact_valid = returncode == 0 and is_valid_model_weight_file(output_path)
+            status = "completed" if model_artifact_valid else "failed"
+
+            if returncode == 0 and not model_artifact_valid:
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(f"\n[System error]: {INVALID_MODEL_ARTIFACT_ERROR}\n")
+                logger.error(
+                    "%s: task_id=%s output_path=%s",
+                    INVALID_MODEL_ARTIFACT_ERROR,
+                    task_id,
+                    output_path,
+                )
 
             async with async_session_maker() as session:
                 task = await session.get(ModelTrainingTask, task_id)
@@ -611,6 +635,9 @@ class TrainingService:
                     if status == "completed":
                         parsed_metrics = self._extract_metrics_from_log(log_file)
                         task.metrics = json.dumps(parsed_metrics) if parsed_metrics else json.dumps({"note": "completed"})
+                    elif returncode == 0:
+                        task.progress = min(float(task.progress or 0.0), 99.0)
+                        task.metrics = json.dumps({"error": INVALID_MODEL_ARTIFACT_ERROR})
                     await session.commit()
 
                     await ws_manager.broadcast_to_task(str(task_id), {

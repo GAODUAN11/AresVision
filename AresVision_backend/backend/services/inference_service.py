@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import json
 import torch
 import numpy as np
@@ -18,6 +17,8 @@ from services.training_channels import (
     get_channels_from_hyperparameters,
     get_task_channel_suffix,
 )
+from services.prediction_horizon import validate_prediction_horizon
+from services.model_artifacts import is_valid_model_weight_file
 from training_backbones.model_zoo import (
     build_forecaster,
     normalize_model_architecture,
@@ -31,6 +32,15 @@ class InferenceService:
         self.base_dir = Path(__file__).parent.parent
         self.openmars_dir = self.base_dir / "data" / "openmars"
         self.mcd_dir = self.base_dir / "data" / "MCD"
+
+    def _load_task_state_dict(self, task):
+        model_path = getattr(task, "output_model_path", None)
+        if not is_valid_model_weight_file(model_path):
+            raise ValueError("Model file not found")
+        try:
+            return torch.load(model_path, map_location=self.device, weights_only=True)
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError) as exc:
+            raise ValueError("Model file not found") from exc
 
     async def predict_task(
         self,
@@ -49,6 +59,7 @@ class InferenceService:
             personal_source_service=personal_source_service,
         )
         try:
+            validate_prediction_horizon(hypers, horizon)
             return await self._predict_task_with_context(
                 task=task,
                 hypers=hypers,
@@ -98,6 +109,7 @@ class InferenceService:
             personal_source_service=personal_source_service,
         )
         try:
+            validate_prediction_horizon(hypers, horizon)
             if getattr(task, "model_source", "official") == "uploaded":
                 return self._uploaded_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
             return self._official_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
@@ -122,6 +134,7 @@ class InferenceService:
                 personal_source_service=personal_source_service,
             )
             try:
+                validate_prediction_horizon(hypers, horizon)
                 if getattr(task, "model_source", "official") == "uploaded":
                     metrics = self._uploaded_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
                 else:
@@ -150,6 +163,7 @@ class InferenceService:
             personal_source_service=personal_source_service,
         )
         try:
+            validate_prediction_horizon(hypers, horizon)
             if getattr(task, "model_source", "official") == "uploaded":
                 truth_raw, pred_raw, actual_horizon = self._uploaded_task_test_set_arrays(
                     task,
@@ -189,6 +203,7 @@ class InferenceService:
                 personal_source_service=personal_source_service,
             )
             try:
+                validate_prediction_horizon(hypers, horizon)
                 if getattr(task, "model_source", "official") == "uploaded":
                     truth_raw, pred_raw, actual_horizon = self._uploaded_task_test_set_arrays(
                         task,
@@ -233,6 +248,7 @@ class InferenceService:
             personal_source_service=personal_source_service,
         )
         try:
+            validate_prediction_horizon(hypers, horizon)
             return self._task_permutation_importance_with_context(
                 task=task,
                 hypers=hypers,
@@ -261,6 +277,7 @@ class InferenceService:
                 personal_source_service=personal_source_service,
             )
             try:
+                validate_prediction_horizon(hypers, horizon)
                 selected_variables = self._channels_to_variable_names(self._task_selected_channels(task, hypers))
                 pfi = self._task_permutation_importance_with_context(
                     task=task,
@@ -297,7 +314,7 @@ class InferenceService:
 
             if task.status != "completed":
                 raise ValueError("Training task is not completed")
-            if not task.output_model_path or not os.path.exists(task.output_model_path):
+            if not is_valid_model_weight_file(task.output_model_path):
                 raise ValueError("Model file not found")
 
             try:
@@ -550,7 +567,7 @@ class InferenceService:
         if not model_path:
             raise ValueError("Uploaded model path is missing from task hyperparameters")
         model = load_uploaded_model(Path(model_path), config).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
+        state_dict = self._load_task_state_dict(task)
         model.load_state_dict(state_dict)
         model.eval()
 
@@ -684,7 +701,7 @@ class InferenceService:
         if not model_path:
             raise ValueError("Uploaded model path is missing from task hyperparameters")
         model = load_uploaded_model(Path(model_path), config).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
+        state_dict = self._load_task_state_dict(task)
         model.load_state_dict(state_dict)
         model.eval()
 
@@ -873,7 +890,7 @@ class InferenceService:
         if not model_path:
             raise ValueError("Uploaded model path is missing from task hyperparameters")
         model = load_uploaded_model(Path(model_path), config).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
+        state_dict = self._load_task_state_dict(task)
         model.load_state_dict(state_dict)
         model.eval()
 
@@ -962,7 +979,7 @@ class InferenceService:
         use_sphere: bool,
         architecture_params: dict,
     ):
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
+        state_dict = self._load_task_state_dict(task)
         uses_legacy_loader = self._is_legacy_official_state_dict(state_dict)
 
         if uses_legacy_loader:
@@ -1039,7 +1056,7 @@ class InferenceService:
         """获取训练任务的测试结果（散点图数据）"""
         async with async_session_maker() as session:
             task = await session.get(ModelTrainingTask, task_id)
-            if not task or not task.output_model_path or not os.path.exists(task.output_model_path):
+            if not task or not is_valid_model_weight_file(task.output_model_path):
                 raise ValueError("Model file not found")
 
             # 1. 解析任务参数
@@ -1168,7 +1185,7 @@ class InferenceService:
         if not model_path:
             raise ValueError("Uploaded model path is missing from task hyperparameters")
         model = load_uploaded_model(Path(model_path), config).to(self.device)
-        state_dict = torch.load(task.output_model_path, map_location=self.device, weights_only=True)
+        state_dict = self._load_task_state_dict(task)
         model.load_state_dict(state_dict)
         model.eval()
 

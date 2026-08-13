@@ -12,7 +12,7 @@ class PredictRequest(BaseModel):
         default=["Temperature", "Dust_Optical_Depth", "Solar_Flux_DN",
                  "U_Wind", "V_Wind"],
     )
-    horizon: int = Field(default=3, ge=1, le=3)
+    horizon: int = Field(default=3, ge=1, le=30)
     ls_start: float = Field(default=90.0, ge=0, le=360)
     mars_year: int = Field(default=27)
     training_task_id: int | None = Field(default=None, ge=1)
@@ -54,7 +54,7 @@ class EvalMetricsResponse(BaseModel):
 
 class TrainingModelCompareRequest(BaseModel):
     task_ids: list[int] = Field(..., min_length=2)
-    horizon: int = Field(default=3, ge=1, le=3)
+    horizon: int = Field(default=3, ge=1, le=30)
 
 
 class TrainingModelMetrics(BaseModel):

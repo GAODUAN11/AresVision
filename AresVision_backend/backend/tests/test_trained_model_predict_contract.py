@@ -184,6 +184,29 @@ async def test_trained_model_request_fails_when_training_inference_service_is_mi
         raise AssertionError("Expected HTTPException for missing training inference service")
 
 
+def test_trained_model_request_returns_model_file_detail_when_weight_disappears():
+    class MissingWeightInferenceService:
+        async def predict_task(self, **kwargs):
+            raise ValueError("Model file not found")
+
+    body = PredictRequest(training_task_id=42, ls_start=90, mars_year=27)
+
+    try:
+        asyncio.run(
+            predict.run_prediction(
+                _request(MissingWeightInferenceService()),
+                body,
+                data_source="default",
+                current_user=None,
+            )
+        )
+    except predict.HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == "Model file not found"
+    else:
+        raise AssertionError("Expected HTTPException for missing model weight")
+
+
 async def test_permutation_importance_uses_training_task_service_when_task_id_is_present():
     service = FakeTrainingInferenceService()
 

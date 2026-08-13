@@ -58,6 +58,17 @@ function appendOverviewSource(url, options = {}) {
   return appendQueryParams(url, buildOverviewSourceQuery(options));
 }
 
+async function throwResponseError(res) {
+  const payload = await res.json().catch(() => null);
+  const detail = payload?.detail;
+  const message = typeof detail === 'string'
+    ? detail
+    : detail != null
+      ? JSON.stringify(detail)
+      : `${res.status} ${res.statusText}`.trim();
+  throw new Error(message);
+}
+
 // ─── 认证接口 ───
 
 export async function apiLogin(email, password) {
@@ -304,7 +315,7 @@ export async function runPrediction(body, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 
@@ -315,7 +326,7 @@ export async function fetchPredictMetrics(body, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 
@@ -381,7 +392,7 @@ export async function fetchErrorDistribution(vars = [], options = {}) {
   if (options.trainingTaskId) params.set('training_task_id', String(options.trainingTaskId));
   if (options.horizon != null) params.set('horizon', String(options.horizon));
   const res = await authedFetch(`${BASE}/predict/error-distribution?${params.toString()}`);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 
@@ -394,7 +405,7 @@ export async function compareTrainingModels(taskIds, options = {}) {
       horizon: options.horizon ?? 3,
     }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 
@@ -407,7 +418,7 @@ export async function compareTrainingModelErrorDistributions(taskIds, options = 
       horizon: options.horizon ?? 3,
     }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 
@@ -420,7 +431,7 @@ export async function compareTrainingModelPfi(taskIds, options = {}) {
       horizon: options.horizon ?? 3,
     }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 
@@ -432,7 +443,7 @@ export async function fetchPermutationImportance(vars = [], options = {}) {
   if (options.lsStart != null) params.set('ls_start', String(options.lsStart));
   if (options.horizon != null) params.set('horizon', String(options.horizon));
   const res = await authedFetch(`${BASE}/predict/permutation-importance?${params.toString()}`);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await throwResponseError(res);
   return res.json();
 }
 // ─── 上传接口 ───

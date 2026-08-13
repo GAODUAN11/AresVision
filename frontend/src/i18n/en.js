@@ -715,7 +715,7 @@ const en = {
     fallbackWarning: 'Note: This prediction uses a fallback model selected automatically due to missing weights.',
     fallbackReason: 'Reason: ',
     initPrompt: 'Configure parameters and click "Run Prediction" to run PredRNNv2 inference',
-    initDesc: 'The model uses the 3 time steps preceding the selected Ls as input to\npredict up to 3 future steps of global Mars ozone column concentration.',
+    initDesc: "The model follows the selected training task's input and output horizon configuration to\npredict global Mars ozone column concentration from the selected Ls.",
     summary: ({ lsStart, year, horizon, varCount, varNames, rmse, ssim, r2 }) =>
       `<strong>Prediction complete</strong>: Start Ls=${lsStart}°, MY${year}, ${horizon} steps predicted.\n` +
       `Input: O₃ + ${varCount} env vars${varCount > 0 ? ` (${varNames})` : ' (O₃ autoregressive baseline only)'}.\n` +

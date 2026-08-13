@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Dict, Any, Optional
 from datetime import datetime
+
+from services.model_artifacts import is_valid_model_weight_file
 
 class TrainingStartRequest(BaseModel):
     model_script: str = Field(..., description="The script filename to execute")
@@ -30,6 +32,11 @@ class TrainingTaskResponse(BaseModel):
     current_loss: Optional[float]
     eta: Optional[str]
     loss_history: Optional[str]
+
+    @computed_field(return_type=bool)
+    @property
+    def model_available(self) -> bool:
+        return self.status == "completed" and is_valid_model_weight_file(self.output_model_path)
 
     class Config:
         from_attributes = True

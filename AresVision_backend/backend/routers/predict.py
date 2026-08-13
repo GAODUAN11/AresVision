@@ -467,7 +467,7 @@ async def get_error_distribution(
     request: Request,
     vars: str = Query("Temperature,Dust_Optical_Depth,Solar_Flux_DN,U_Wind,V_Wind"),
     training_task_id: int | None = Query(None, ge=1),
-    horizon: int = Query(3, ge=1, le=3),
+    horizon: int = Query(3, ge=1, le=30),
     current_user: User | None = Depends(get_optional_user),
 ):
     """鑾峰彇鏁翠釜娴嬭瘯闆嗕笂鐨勮宸垎甯冦€佹牳瀵嗗害鏁ｇ偣鍙婃煴鐘跺浘鏁版嵁"""
@@ -487,6 +487,8 @@ async def get_error_distribution(
         return ps.get_error_distribution(
             selected_variables=selected_variables
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except HTTPException:
@@ -512,7 +514,7 @@ async def get_permutation_importance(
     training_task_id: int | None = Query(None, ge=1),
     mars_year: int = Query(DEFAULT_MARS_YEAR),
     ls_start: float = Query(90.0, ge=0, le=360),
-    horizon: int = Query(3, ge=1, le=3),
+    horizon: int = Query(3, ge=1, le=30),
     current_user: User | None = Depends(get_optional_user),
 ):
     """鑾峰彇鎺掑垪鐗瑰緛閲嶈鎬?(Permutation Feature Importance) 鍒嗚В缁撴灉"""
@@ -532,6 +534,8 @@ async def get_permutation_importance(
             )
         ps = _get_predict_service(request)
         return ps.get_permutation_importance(selected_variables=selected_variables)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except HTTPException:

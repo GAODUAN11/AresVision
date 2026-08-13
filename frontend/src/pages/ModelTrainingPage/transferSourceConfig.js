@@ -176,6 +176,12 @@ export function hasTransferSourceTask(tasks, taskId) {
   return tasks.some((task) => String(task.id) === String(taskId));
 }
 
+export function getAvailableTransferSourceTasks(tasks = []) {
+  return (Array.isArray(tasks) ? tasks : []).filter(
+    (task) => task?.status === 'completed' && task?.model_available === true
+  );
+}
+
 export function applyTransferStructureConfig(structureState, sourceConfig) {
   const next = captureTransferStructureSnapshot(structureState);
   next.modelSource = sourceConfig.modelSource;

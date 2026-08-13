@@ -51,6 +51,10 @@ import {
 } from './PredictPage/predictModelModes';
 import CompareTrainingModelsPanel from './PredictPage/CompareTrainingModels/CompareTrainingModelsPanel';
 import { getCompareSelectionState } from './PredictPage/CompareTrainingModels/compareTrainingModelsData';
+import {
+  clampPredictionHorizon,
+  resolvePredictionHorizonLimit,
+} from './PredictPage/predictionHorizon';
 
 const SHORTHAND_MAP = {
   Temperature: 'T',
@@ -149,6 +153,20 @@ export default function PredictPage() {
     [selectedCompareTrainingTaskIds]
   );
   const compareSelectionIdKey = compareSelection.ids.join(',');
+  const selectedCompareTrainingTasks = useMemo(() => {
+    const selectedIds = new Set(compareSelection.ids);
+    return trainingModelOptions
+      .filter((option) => selectedIds.has(option.id))
+      .map((option) => option.task);
+  }, [compareSelectionIdKey, trainingModelOptions]);
+  const predictionHorizonLimit = useMemo(
+    () => resolvePredictionHorizonLimit({
+      modelMode,
+      selectedTask: selectedTrainingOption?.task,
+      selectedTasks: selectedCompareTrainingTasks,
+    }),
+    [modelMode, selectedCompareTrainingTasks, selectedTrainingOption]
+  );
   const currentCompareTrainingMetricsKey = useMemo(
     () => buildTrainingModelCompareKey({
       taskIds: compareSelection.ids,
@@ -244,6 +262,11 @@ export default function PredictPage() {
   }, [modelMode, selectedTrainingOption, trainingModelOptions, trainingTasksLoaded, trainingTasksLoading]);
 
   useEffect(() => {
+    if (predictionHorizonLimit == null) return;
+    setPredStep((current) => clampPredictionHorizon(current, predictionHorizonLimit));
+  }, [predictionHorizonLimit]);
+
+  useEffect(() => {
     let active = true;
     setIsSwitchingSource(true);
 
@@ -272,6 +295,12 @@ export default function PredictPage() {
 
   const handlePredict = useCallback(async () => {
     if (isSwitchingSource) return;
+    if (predictionHorizonLimit == null || predStep < 1 || predStep > predictionHorizonLimit) {
+      setError(settings?.language !== 'en'
+        ? '当前模型没有有效的输出窗口配置。'
+        : 'The selected model does not have a valid output horizon.');
+      return;
+    }
     if (modelMode === PREDICT_MODEL_MODE_COMPARE) {
       const compareTaskIds = compareSelection.ids;
       if (!compareSelection.canCompare) {
@@ -454,6 +483,7 @@ export default function PredictPage() {
     metricsKey,
     modelMode,
     performanceData,
+    predictionHorizonLimit,
     predStep,
     pfiData,
     pfiKey,
@@ -645,6 +675,7 @@ export default function PredictPage() {
           setLsStart={setLsStart}
           predStep={predStep}
           setPredStep={setPredStep}
+          predictionHorizonLimit={predictionHorizonLimit}
           selectedVars={selectedVars}
           toggleVar={toggleVar}
           VARIABLES={VARIABLES}

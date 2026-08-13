@@ -8,6 +8,7 @@ import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
 import { buildDistributionStats } from '../distributionStats';
+import { formatAdaptiveSeries, formatAdaptiveValue } from './chartValueFormat';
 
 export default function DataDistribution({ marsYear, lsValue, sliceData }) {
   const t = useT();
@@ -90,6 +91,10 @@ export default function DataDistribution({ marsYear, lsValue, sliceData }) {
   const meanConverted = convertOzone(derived.mean, ozoneUnit);
   const p10Converted = convertOzone(derived.p10, ozoneUnit);
   const p90Converted = convertOzone(derived.p90, ozoneUnit);
+  const histogramValues = derived.values.map((value) => convertOzone(value, ozoneUnit));
+  const histogramHover = formatAdaptiveSeries(histogramValues, { fixedDigits: precision });
+  const latProfileValues = derived.latProfile.map((item) => convertOzone(item.mean, ozoneUnit));
+  const latProfileHover = formatAdaptiveSeries(latProfileValues, { fixedDigits: precision });
   return (
     <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', gap: 16, overflowX: 'hidden', overflowY: 'auto', scrollbarGutter: 'stable', paddingRight: 4 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
@@ -100,17 +105,17 @@ export default function DataDistribution({ marsYear, lsValue, sliceData }) {
         </div>
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(199,91,57,0.08)', border: '1px solid rgba(199,91,57,0.18)' }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.globalMean}</div>
-          <div style={{ marginTop: 6, color: C.mars, fontSize: 'calc(16px * var(--font-scale, 1))', fontWeight: 800, fontFamily: 'var(--font-display)' }}>{fmtNum(meanConverted, precision)}</div>
+          <div style={{ marginTop: 6, color: C.mars, fontSize: 'calc(16px * var(--font-scale, 1))', fontWeight: 800, fontFamily: 'var(--font-display)' }}>{formatAdaptiveValue(meanConverted, { fixedDigits: precision })}</div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{ozoneLabel(ozoneUnit)}</div>
         </div>
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}` }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.p10}</div>
-          <div style={{ marginTop: 6, color: C.ice, fontSize: 'calc(16px * var(--font-scale, 1))', fontWeight: 800 }}>{fmtNum(p10Converted, precision)}</div>
+          <div style={{ marginTop: 6, color: C.ice, fontSize: 'calc(16px * var(--font-scale, 1))', fontWeight: 800 }}>{formatAdaptiveValue(p10Converted, { fixedDigits: precision })}</div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{copy.p10Desc}</div>
         </div>
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}` }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.p90}</div>
-          <div style={{ marginTop: 6, color: C.ice, fontSize: 'calc(16px * var(--font-scale, 1))', fontWeight: 800 }}>{fmtNum(p90Converted, precision)}</div>
+          <div style={{ marginTop: 6, color: C.ice, fontSize: 'calc(16px * var(--font-scale, 1))', fontWeight: 800 }}>{formatAdaptiveValue(p90Converted, { fixedDigits: precision })}</div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{copy.p90Desc}</div>
         </div>
       </div>
@@ -121,14 +126,15 @@ export default function DataDistribution({ marsYear, lsValue, sliceData }) {
           <div style={{ minHeight: 0 }}>
             <Plot
               data={[{
-                x: derived.values.map((value) => convertOzone(value, ozoneUnit)),
+                x: histogramValues,
                 type: 'histogram',
                 nbinsx: 28,
                 marker: {
                   color: 'rgba(199,91,57,0.72)',
                   line: { color: 'rgba(255,255,255,0.18)', width: 1 },
                 },
-                hovertemplate: `%{x:.3f} ${ozoneLabel(ozoneUnit)}<br>${copy.hoverCount} %{y}<extra></extra>`,
+                customdata: histogramHover,
+                hovertemplate: `%{customdata[0]} ${ozoneLabel(ozoneUnit)}<br>${copy.hoverCount} %{y}<extra></extra>`,
               }]}
               layout={{
                 autosize: true,
@@ -164,14 +170,15 @@ export default function DataDistribution({ marsYear, lsValue, sliceData }) {
             <div style={{ minHeight: 0 }}>
               <Plot
                 data={[{
-                  x: derived.latProfile.map((item) => convertOzone(item.mean, ozoneUnit)),
+                  x: latProfileValues,
                   y: derived.latProfile.map((item) => item.lat),
                   type: 'scatter',
                   mode: 'lines',
                   line: { color: C.blue, width: 3, shape: 'spline' },
                   fill: 'tozerox',
                   fillcolor: 'rgba(74,158,255,0.14)',
-                  hovertemplate: `${copy.hoverLat} %{y:.1f}${isZh ? '°' : ' deg'}<br>%{x:.3f} ${ozoneLabel(ozoneUnit)}<extra></extra>`,
+                  customdata: latProfileHover,
+                  hovertemplate: `${copy.hoverLat} %{y:.1f}${isZh ? '°' : ' deg'}<br>%{customdata[0]} ${ozoneLabel(ozoneUnit)}<extra></extra>`,
                 }]}
                 layout={{
                   autosize: true,

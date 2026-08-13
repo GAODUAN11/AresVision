@@ -14,6 +14,7 @@ import {
 } from '../../../utils/units';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import { formatAdaptiveMatrix } from './chartValueFormat';
 
 const VARIABLE_OPTIONS = [
   { id: 'o3col', zh: '臭氧柱浓度', en: 'Ozone Column' },
@@ -266,6 +267,7 @@ export default function SeasonalChart({ marsYear, overviewSourceParams = {} }) {
   }
 
   const convertedZ = data.z.map((row) => row.map((value) => convertByVariable(value, variable, units)));
+  const hoverZ = formatAdaptiveMatrix(convertedZ, { fixedDigits: 3 });
   const zMinRaw = convertByVariable(data.min, variable, units);
   const zMaxRaw = convertByVariable(data.max, variable, units);
   const zMin = Number.isFinite(zMinRaw) ? zMinRaw : undefined;
@@ -280,8 +282,8 @@ export default function SeasonalChart({ marsYear, overviewSourceParams = {} }) {
     : currentVariableLabel;
 
   const hoverTemplate = isZh
-    ? `Ls: %{x:.1f}°<br>纬度: %{y:.1f}°<br>${currentVariableLabel}: %{z:.3f} ${currentUnitLabel}<extra></extra>`
-    : `Ls: %{x:.1f}°<br>Lat: %{y:.1f}°<br>${currentVariableLabel}: %{z:.3f} ${currentUnitLabel}<extra></extra>`;
+    ? `Ls: %{x:.1f}°<br>纬度: %{y:.1f}°<br>${currentVariableLabel}: %{customdata} ${currentUnitLabel}<extra></extra>`
+    : `Ls: %{x:.1f}°<br>Lat: %{y:.1f}°<br>${currentVariableLabel}: %{customdata} ${currentUnitLabel}<extra></extra>`;
 
   return (
     <div className="seasonal-chart-container" style={{ width: '100%', height: '100%', position: 'relative', display: 'grid', gap: 10 }}>
@@ -341,6 +343,7 @@ export default function SeasonalChart({ marsYear, overviewSourceParams = {} }) {
               z: convertedZ,
               x: data.x,
               y: data.y,
+              customdata: hoverZ,
               type: 'heatmap',
               zsmooth: 'best',
               colorscale: PLOTLY_SCALE[colormapName] ?? 'Jet',

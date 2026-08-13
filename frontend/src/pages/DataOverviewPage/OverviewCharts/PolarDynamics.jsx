@@ -6,6 +6,7 @@ import { fetchOverviewPolarDynamics } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
 import { movingAverageSeries } from './chartSeries';
+import { formatAdaptiveSeries } from './chartValueFormat';
 
 const SMOOTH_WINDOW = 21;
 
@@ -108,6 +109,13 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
     };
   }, [data]);
 
+  const ozoneHoverText = useMemo(() => ({
+    northRaw: formatAdaptiveSeries(data?.north?.ozone || [], { fixedDigits: 3 }),
+    northSmoothed: formatAdaptiveSeries(smoothedData?.northOzone || data?.north?.ozone || [], { fixedDigits: 3 }),
+    southRaw: formatAdaptiveSeries(data?.south?.ozone || [], { fixedDigits: 3 }),
+    southSmoothed: formatAdaptiveSeries(smoothedData?.southOzone || data?.south?.ozone || [], { fixedDigits: 3 }),
+  }), [data, smoothedData]);
+
   const aiInsightProvider = useCallback(() => ({
     card: 'polar',
     marsYear,
@@ -160,6 +168,8 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
               mode: 'lines',
               name: `${copy.northOzone} raw`,
               line: { color: 'rgba(74,158,255,0.22)', width: 1 },
+              customdata: ozoneHoverText.northRaw,
+              hovertemplate: `${copy.lsAxis}: %{x:.1f}<br>${copy.northOzone}: %{customdata[0]}<extra></extra>`,
               showlegend: false,
             },
             {
@@ -168,7 +178,9 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
               type: 'scatter',
               mode: 'lines',
               name: copy.northOzone,
-              line: { color: C.blue, width: 2.5 }
+              line: { color: C.blue, width: 2.5 },
+              customdata: ozoneHoverText.northSmoothed,
+              hovertemplate: `${copy.lsAxis}: %{x:.1f}<br>${copy.northOzone}: %{customdata[0]}<extra></extra>`
             },
             {
               x: data.ls,
@@ -177,6 +189,8 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
               mode: 'lines',
               name: `${copy.southOzone} raw`,
               line: { color: 'rgba(199,91,57,0.22)', width: 1, dash: 'dot' },
+              customdata: ozoneHoverText.southRaw,
+              hovertemplate: `${copy.lsAxis}: %{x:.1f}<br>${copy.southOzone}: %{customdata[0]}<extra></extra>`,
               showlegend: false,
             },
             {
@@ -185,7 +199,9 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
               type: 'scatter',
               mode: 'lines',
               name: copy.southOzone,
-              line: { color: C.mars, width: 2.5, dash: 'dot' }
+              line: { color: C.mars, width: 2.5, dash: 'dot' },
+              customdata: ozoneHoverText.southSmoothed,
+              hovertemplate: `${copy.lsAxis}: %{x:.1f}<br>${copy.southOzone}: %{customdata[0]}<extra></extra>`
             }
           ]}
           layout={{

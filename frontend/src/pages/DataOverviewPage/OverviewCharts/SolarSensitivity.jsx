@@ -5,6 +5,7 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewSolarPhotochemical } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { correlation, sampleSeries, summarizeSeries } from './aiInsight';
+import { formatAdaptiveSeries } from './chartValueFormat';
 
 const BANDS = [
   'Equatorial (30S-30N)',
@@ -119,6 +120,10 @@ export default function SolarSensitivity({ marsYear, overviewSourceParams = {} }
   }), [activeBand, copy.bands, data, diagnostics, loading, marsYear]);
 
   useAiInsightRegistration('solarsens', aiInsightProvider);
+  const ozoneHoverText = useMemo(
+    () => formatAdaptiveSeries(data?.ozone || [], { fixedDigits: 4 }),
+    [data],
+  );
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -179,7 +184,8 @@ export default function SolarSensitivity({ marsYear, overviewSourceParams = {} }
                   }
                 },
                 text: data?.ls ? data.ls.map(v => `${copy.lsText}: ${v.toFixed(1)}°`) : [],
-                hovertemplate: `${copy.fluxHover}: %{x:.1f}<br>${copy.ozoneHover}: %{y:.4f}<br>%{text}<extra></extra>`
+                customdata: ozoneHoverText,
+                hovertemplate: `${copy.fluxHover}: %{x:.1f}<br>${copy.ozoneHover}: %{customdata[0]}<br>%{text}<extra></extra>`
               }
             ]}
             layout={{

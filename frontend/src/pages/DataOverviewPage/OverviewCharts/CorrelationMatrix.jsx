@@ -7,6 +7,7 @@ import { ozoneLabel, convertOzone } from '../../../utils/units';
 import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
 import { roundValue, sampleSeries } from './aiInsight';
+import { formatAdaptiveSeries, formatAdaptiveValue } from './chartValueFormat';
 
 const VARIABLE_META_BASE = [
   { id: 'U_Wind', color: C.blue, unit: 'm/s' },
@@ -265,6 +266,11 @@ export default function CorrelationMatrix({ marsYear, overviewSourceParams = {} 
   const strongestLag = derived?.lagCurve?.reduce((best, item) => (
     !best || Math.abs(item.corr) > Math.abs(best.corr) ? item : best
   ), null);
+  const ozoneRangeValues = derived?.ozoneSeries?.filter(Number.isFinite) || [];
+  const ozoneRangeMin = ozoneRangeValues.length ? convertOzone(Math.min(...ozoneRangeValues), ozoneUnit) : NaN;
+  const ozoneRangeMax = ozoneRangeValues.length ? convertOzone(Math.max(...ozoneRangeValues), ozoneUnit) : NaN;
+  const scatterOzoneY = derived?.paired?.map((item) => convertOzone(item.ozone, ozoneUnit)) || [];
+  const scatterOzoneHover = formatAdaptiveSeries(scatterOzoneY, { fixedDigits: precision });
 
   const aiInsightProvider = useCallback(() => ({
     card: 'correlation',
@@ -360,9 +366,9 @@ export default function CorrelationMatrix({ marsYear, overviewSourceParams = {} 
         <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}` }}>
           <div style={{ color: C.ice30, fontSize: 'calc(10px * var(--font-scale, 1))', letterSpacing: 1 }}>{copy.ozoneRange}</div>
           <div style={{ marginTop: 6, color: C.ice, fontSize: 'calc(14px * var(--font-scale, 1))', fontWeight: 800 }}>
-            {fmtNum(convertOzone(Math.min(...derived.ozoneSeries.filter(Number.isFinite)), ozoneUnit), precision)}
+            {formatAdaptiveValue(ozoneRangeMin, { fixedDigits: precision })}
             {' - '}
-            {fmtNum(convertOzone(Math.max(...derived.ozoneSeries.filter(Number.isFinite)), ozoneUnit), precision)}
+            {formatAdaptiveValue(ozoneRangeMax, { fixedDigits: precision })}
           </div>
           <div style={{ color: C.ice30, fontSize: 'calc(11px * var(--font-scale, 1))' }}>{ozoneLabel(ozoneUnit)}</div>
         </div>
@@ -374,7 +380,7 @@ export default function CorrelationMatrix({ marsYear, overviewSourceParams = {} 
           <div style={{ minHeight: 0 }}>
             <Plot
             data={[
-              { x: derived.paired.map((item) => item.driver), y: derived.paired.map((item) => convertOzone(item.ozone, ozoneUnit)), mode: 'markers', type: 'scatter', marker: { color: selectedMeta.color, size: 8, opacity: 0.75, line: { color: '#fff', width: 0.8 } }, text: derived.paired.map((item) => item.ls), hovertemplate: `${selectedMeta.label}: %{x:.3f}<br>${copy.ozoneLegend}: %{y:.3f} ${ozoneLabel(ozoneUnit)}<br>${copy.lsHover} %{text:.0f}°<extra></extra>`, name: copy.samples },
+              { x: derived.paired.map((item) => item.driver), y: scatterOzoneY, mode: 'markers', type: 'scatter', marker: { color: selectedMeta.color, size: 8, opacity: 0.75, line: { color: '#fff', width: 0.8 } }, text: derived.paired.map((item) => item.ls), customdata: scatterOzoneHover, hovertemplate: `${selectedMeta.label}: %{x:.3f}<br>${copy.ozoneLegend}: %{customdata[0]} ${ozoneLabel(ozoneUnit)}<br>${copy.lsHover} %{text:.0f}°<extra></extra>`, name: copy.samples },
               { x: derived.regressionLine.map((item) => item.x), y: derived.regressionLine.map((item) => convertOzone(item.y, ozoneUnit)), mode: 'lines', type: 'scatter', line: { color: plotText, width: 2 }, hoverinfo: 'skip', name: copy.fit },
             ]}
             layout={{ autosize: true, paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', margin: { l: 52, r: 18, t: 12, b: 44 }, xaxis: { title: `${selectedMeta.label} (${selectedMeta.unit})`, gridcolor: plotGrid, tickfont: { color: plotText, size: 10  }, titlefont: { color: plotText, size: 11  }, automargin: true }, yaxis: { title: `O3 (${ozoneLabel(ozoneUnit)})`, gridcolor: plotGrid, tickfont: { color: plotText, size: 10  }, titlefont: { color: plotText, size: 11  }, automargin: true }, showlegend: false }}

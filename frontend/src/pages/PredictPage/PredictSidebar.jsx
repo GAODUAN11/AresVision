@@ -492,7 +492,6 @@ export default function PredictSidebar({
   selectedCompareIds,
   setSelectedCompareIds,
   setCompareConfigs,
-  onShapleyClick,
   currentMetrics,
   perfLoading,
   handleFetchPerformance,
@@ -501,7 +500,6 @@ export default function PredictSidebar({
   const t = useT();
   const { settings } = useSettings();
   const isZh = settings?.language !== 'en';
-  const canShowShapley = analysisVisibility.shapley !== false;
   const canShowInputVariables = analysisVisibility.inputVariables !== false;
   const canShowPerformanceComparison = analysisVisibility.performanceComparison !== false;
   const canShowSelectionPerformance = analysisVisibility.selectionPerformance !== false;
@@ -618,11 +616,6 @@ export default function PredictSidebar({
             ) : isCompareMode ? (isZh ? '开始对比' : 'Start comparison') : t('predict.runBtn')}
           </ActionButton>
 
-          {canShowShapley ? (
-            <ActionButton secondary onClick={() => onShapleyClick('gradient')}>
-              {t('predict.shapleyBtn')}
-            </ActionButton>
-          ) : null}
         </div>
 
         {error ? (

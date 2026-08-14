@@ -31,7 +31,6 @@ import PredictDisplay from '../PredictDisplay';
 import PredictMetrics from '../PredictMetrics';
 import ErrorDistributionChart from '../ErrorDistributionChart';
 import PermutationImportanceChart from '../PermutationImportanceChart';
-import ShapleyImportanceChart from '../ShapleyImportanceChart';
 import { TRIPTYCH_PANEL_DEFS, VIEW_MODE_IDS } from '../PredictComponents';
 import NodePalette from './NodePalette';
 import WorkflowConfigPanel from './WorkflowConfigPanel';
@@ -108,7 +107,6 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
   const [loading, setLoading] = useState(false);
   const [pfiLoading, setPfiLoading] = useState(false);
   const [runError, setRunError] = useState('');
-  const [showShapley, setShowShapley] = useState(false);
   const predictScopeRef = useRef(predictScope);
   const [cacheScope, setCacheScope] = useState(null);
   const requestControllerRef = useRef(null);
@@ -185,7 +183,6 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
     setLoading(false);
     setPfiLoading(false);
     setRunError('');
-    setShowShapley(false);
   }, [predictScope, setEdges, setNodes, setWorkflowSelection]);
 
   useEffect(() => {
@@ -554,7 +551,6 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
           trainingDraft={trainingDraft}
           validation={predictionValidation}
           runError={runError}
-          onOpenShap={() => setShowShapley(true)}
         />
       </div>
 
@@ -606,15 +602,6 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
         </div>
       ) : null}
 
-      {showShapley ? (
-        <ShapleyImportanceChart
-          isLight={isLight}
-          plotTextColor={plotTextColor}
-          plotGridColor={plotGridColor}
-          onClose={() => setShowShapley(false)}
-          mode="gradient"
-        />
-      ) : null}
     </div>
   );
 }

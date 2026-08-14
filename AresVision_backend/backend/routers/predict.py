@@ -14,7 +14,7 @@ from schemas.predict import (
     EvalMetricsResponse, AblationResponse, DiurnalResponse,
     PerformanceResponse, PerformanceCompareRequest, PerformanceCompareResponse,
     TrainingModelCompareRequest, TrainingModelCompareResponse,
-    ErrorDistributionResponse, GlobalShapResponse, PermutationImportanceResponse,
+    ErrorDistributionResponse, PermutationImportanceResponse,
 )
 from config import DEFAULT_MARS_YEAR, LATITUDE_BANDS
 from services.analysis_service import AnalysisService
@@ -407,20 +407,6 @@ async def get_performance_comparison(
         raise HTTPException(status_code=500, detail=f"瀵规瘮鏁版嵁鐢熸垚澶辫触: {e}")
 
 
-@router.get("/shapley")
-async def get_shapley_values(
-    request: Request,
-    metric: str = Query("r2", description="鎬ц兘鎸囨爣 (r2, rmse, mae, ssim)"),
-):
-    """鑾峰彇鎵€鏈夋皵璞＄壒寰佺殑 Shapley 璐＄尞鍊?"""
-    try:
-        ps = _get_predict_service(request)
-        return ps.get_shapley_values(metric)
-    except Exception as e:
-        logger.error(f"Shapley璁＄畻澶辫触: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # 鈹€鈹€鈹€ 鏄煎鍙樺寲 鈹€鈹€鈹€
 
 @router.get("/diurnal", response_model=DiurnalResponse)
@@ -498,15 +484,6 @@ async def get_error_distribution(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/shapley-global", response_model=GlobalShapResponse)
-async def get_shapley_global(request: Request):
-    """鎵ц骞惰幏鍙栧叏娴嬭瘯闆?SHAP 鍏ㄥ眬褰掑洜鍒嗘瀽缁撴灉"""
-    try:
-        ps = _get_predict_service(request)
-        return ps.get_global_shap()
-    except Exception as e:
-        logger.error(f"鍏ㄥ眬 SHAP 鍒嗘瀽澶辫触: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/permutation-importance", response_model=PermutationImportanceResponse)
 async def get_permutation_importance(
     request: Request,

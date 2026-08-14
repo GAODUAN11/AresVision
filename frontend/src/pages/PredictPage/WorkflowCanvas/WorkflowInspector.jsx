@@ -4,7 +4,6 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import {
   CHANNEL_BY_VARIABLE,
   WORKFLOW_NODE_TYPES,
-  WORKFLOW_OUTPUTS,
 } from './workflowSchema';
 import {
   createWorkflowText,
@@ -56,7 +55,6 @@ export default function WorkflowInspector({
   trainingDraft,
   validation,
   runError,
-  onOpenShap,
 }) {
   const t = useT();
   const { settings } = useSettings();
@@ -95,26 +93,7 @@ export default function WorkflowInspector({
 
     if (type === WORKFLOW_NODE_TYPES.ANALYSIS_OUTPUT) {
       return (
-        <div style={{ display: 'grid', gap: 10 }}>
-          <SummaryRow label={text.inspector.fields.output} value={getOutputLabel(data.outputId, text)} accent={C.blue} />
-          {data.outputId === WORKFLOW_OUTPUTS.SHAP ? (
-            <button
-              type="button"
-              onClick={onOpenShap}
-              style={{
-                minHeight: 40,
-                border: `1px solid ${C.borderStrong}`,
-                borderRadius: 10,
-                background: C.bgMuted,
-                color: C.ice,
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
-            >
-              {text.actions.openShap}
-            </button>
-          ) : null}
-        </div>
+        <SummaryRow label={text.inspector.fields.output} value={getOutputLabel(data.outputId, text)} accent={C.blue} />
       );
     }
 

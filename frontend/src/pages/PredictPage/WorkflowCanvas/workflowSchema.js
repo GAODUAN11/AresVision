@@ -12,7 +12,6 @@ export const WORKFLOW_OUTPUTS = {
   METRICS: 'metrics',
   ERROR_DISTRIBUTION: 'errorDistribution',
   PFI: 'permutationImportance',
-  SHAP: 'shap',
 };
 
 export const CHANNEL_DEFS = [

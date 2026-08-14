@@ -139,7 +139,6 @@ export const PALETTE_NODE_TEMPLATES = [
       { workflowType: WORKFLOW_NODE_TYPES.ANALYSIS_OUTPUT, label: 'Metrics', data: { outputId: WORKFLOW_OUTPUTS.METRICS } },
       { workflowType: WORKFLOW_NODE_TYPES.ANALYSIS_OUTPUT, label: 'Error Distribution', data: { outputId: WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION } },
       { workflowType: WORKFLOW_NODE_TYPES.ANALYSIS_OUTPUT, label: 'PFI', data: { outputId: WORKFLOW_OUTPUTS.PFI } },
-      { workflowType: WORKFLOW_NODE_TYPES.ANALYSIS_OUTPUT, label: 'SHAP', data: { outputId: WORKFLOW_OUTPUTS.SHAP } },
     ],
   },
 ];

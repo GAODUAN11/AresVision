@@ -83,7 +83,7 @@ function Test-VenvHealth {
         return $false
     }
     try {
-        $null = & $venvPython -c "import sys; import sqlite3, aiosqlite; import fastapi, uvicorn, numpy, torch, shap, psutil, matplotlib, seaborn; import websockets; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')" 2>&1
+        $null = & $venvPython -c "import sys; import sqlite3, aiosqlite; import fastapi, uvicorn, numpy, torch, psutil, matplotlib, seaborn; import websockets; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')" 2>&1
         return ($LASTEXITCODE -eq 0)
     }
     catch {
@@ -269,7 +269,7 @@ if ($LASTEXITCODE -ne 0) {
     Assert-LastExitCode "python -m pip install torch==2.5.1 (cpu fallback)"
 }
 
-& $venvPython -c "import sqlite3, aiosqlite; import fastapi, uvicorn, numpy, torch, shap, psutil, matplotlib, seaborn; import websockets"
+& $venvPython -c "import sqlite3, aiosqlite; import fastapi, uvicorn, numpy, torch, psutil, matplotlib, seaborn; import websockets"
 Assert-LastExitCode "python import check (runtime packages)"
 
 Write-Host "[OK] Runtime repaired successfully." -ForegroundColor Green

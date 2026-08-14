@@ -144,22 +144,6 @@ class ErrorDistributionResponse(BaseModel):
     rmse: float
 
 
-class GlobalShapBarItem(BaseModel):
-    name: str
-    value: float
-
-
-class GlobalShapSummaryItem(BaseModel):
-    name: str
-    shap_values: list[float]
-    feature_values: list[float]
-
-
-class GlobalShapResponse(BaseModel):
-    bar_data: list[GlobalShapBarItem]
-    summary_data: list[GlobalShapSummaryItem]
-
-
 class PermutationImportanceItem(BaseModel):
     name: str
     importance: float

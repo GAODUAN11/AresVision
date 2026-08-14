@@ -33,7 +33,6 @@ import PredictSidebar from './PredictPage/PredictSidebar';
 import PredictDisplay from './PredictPage/PredictDisplay';
 import PredictMetrics from './PredictPage/PredictMetrics';
 import PredictBarChart from './PredictPage/PredictBarChart';
-import ShapleyImportanceChart from './PredictPage/ShapleyImportanceChart';
 import PredictFullscreenHUD from './PredictPage/PredictFullscreenHUD';
 import ErrorDistributionChart from './PredictPage/ErrorDistributionChart';
 import PermutationImportanceChart from './PredictPage/PermutationImportanceChart';
@@ -168,7 +167,6 @@ export default function PredictPage() {
 
   const [compareConfigs, setCompareConfigs] = useState([]);
   const [selectedCompareIds, setSelectedCompareIds] = useState([]);
-  const [showShapley, setShowShapley] = useState({ visible: false, mode: 'gradient' });
 
   const analysisVisibility = useMemo(
     () => getPredictAnalysisVisibility(modelMode),
@@ -367,7 +365,6 @@ export default function PredictPage() {
     setCompareTrainingPfiData(null);
     setCompareTrainingPfiKey(null);
     setFullscreen3D(null);
-    setShowShapley({ visible: false, mode: 'gradient' });
 
     if (!predictScope) return;
   }, [predictScope, requestCoordinator]);
@@ -608,7 +605,6 @@ export default function PredictPage() {
     setCompareTrainingErrorKey(null);
     setCompareTrainingPfiData(null);
     setCompareTrainingPfiKey(null);
-    setShowShapley({ visible: false, mode: 'gradient' });
 
     writePredictCache({
       resultContextKey: null,
@@ -1044,7 +1040,6 @@ export default function PredictPage() {
     setPerformanceKey(null);
     setErrorDistData(null);
     setPfiData(null);
-    setShowShapley({ visible: false, mode: 'gradient' });
   }, [modelMode]);
 
   const handleFetchPerformance = useCallback(async () => {
@@ -1170,11 +1165,6 @@ export default function PredictPage() {
           selectedCompareIds={selectedCompareIds}
           setSelectedCompareIds={setSelectedCompareIds}
           setCompareConfigs={setCompareConfigs}
-          onShapleyClick={(mode) => {
-            if (analysisVisibility.shapley) {
-              setShowShapley({ visible: true, mode });
-            }
-          }}
           currentMetrics={currentSelectionMetrics}
           perfLoading={perfLoading}
           handleFetchPerformance={handleFetchPerformance}
@@ -1246,8 +1236,6 @@ export default function PredictPage() {
               precision={precision}
               handleFetchPerformance={handleFetchPerformance}
               perfLoading={perfLoading}
-              showShapley={showShapley}
-              setShowShapley={setShowShapley}
             />
           ) : null}
 
@@ -1281,15 +1269,6 @@ export default function PredictPage() {
         ozoneUnit={ozoneUnit}
       />
 
-      {analysisVisibility.shapley && showShapley.visible && (
-        <ShapleyImportanceChart
-          isLight={isLight}
-          plotTextColor={plotTextColor}
-          plotGridColor={plotGridColor}
-          onClose={() => setShowShapley({ visible: false, mode: 'gradient' })}
-          mode={showShapley.mode}
-        />
-      )}
     </div>
   );
 }

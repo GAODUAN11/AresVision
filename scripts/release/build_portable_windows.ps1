@@ -260,8 +260,8 @@ if (-not $SkipVenv) {
         Assert-LastExitCode "python -m pip install torch==2.5.1 (cpu fallback)"
     }
 
-    & $pythonExe -c "import shap, psutil; print('shap=' + shap.__version__)"
-    Assert-LastExitCode "python import check (shap, psutil)"
+    & $pythonExe -c "import psutil; print('psutil=' + psutil.__version__)"
+    Assert-LastExitCode "python import check (psutil)"
 
     & $pythonExe -c "import matplotlib, seaborn; print('matplotlib=' + matplotlib.__version__ + ', seaborn=' + seaborn.__version__)"
     Assert-LastExitCode "python import check (matplotlib, seaborn)"

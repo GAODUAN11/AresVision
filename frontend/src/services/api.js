@@ -381,18 +381,6 @@ export async function fetchDiurnal(marsYear = 27, ls = 90, latBand = 'Equatorial
   return res.json();
 }
 
-export async function fetchShapleyValues(metric = 'r2') {
-  const res = await fetch(`${BASE}/predict/shapley?metric=${metric}`);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
-}
-
-export async function fetchShapleyGlobal() {
-  const res = await fetch(`${BASE}/predict/shapley-global`);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
-}
-
 export async function fetchErrorDistribution(vars = [], options = {}) {
   const varsStr = vars.length > 0 ? vars.join(',') : 'Temperature,Dust_Optical_Depth,Solar_Flux_DN,U_Wind,V_Wind';
   const params = new URLSearchParams({ vars: varsStr });

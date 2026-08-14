@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import gzip
 import hashlib
 import inspect
 import json
+import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,7 @@ from config import MCD_DIR, OPENMARS_DIR
 from database.engine import async_session_maker
 from database.models import PredictionAnalysisCache
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 
 CACHE_SCHEMA_VERSION = 1
@@ -22,10 +26,32 @@ SUPPORTED_ANALYSIS_TYPES = {
     "error_distribution",
     "pfi",
 }
+logger = logging.getLogger("aresvision.prediction_analysis_cache")
 
 
 class CachePayloadError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class CacheClaim:
+    action: str
+    row_id: int | None = None
+    token: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+def _lease_is_active(value, now):
+    if value is None:
+        return False
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value > now
+
+
+async def _resolve_compute(compute):
+    result = compute()
+    return await result if inspect.isawaitable(result) else result
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -210,107 +236,173 @@ class PredictionAnalysisCacheService:
                 "Authentication is required for trained-model analysis"
             )
 
-        request_hash = build_request_hash(
-            analysis_type, request_params
-        )
+        scope = {
+            "user_id": int(user_id),
+            "training_task_id": int(task.id),
+            "analysis_type": analysis_type,
+            "request_hash": build_request_hash(
+                analysis_type, request_params
+            ),
+        }
         fingerprint = build_artifact_fingerprint(task, data_dirs)
-        ready = await self._read_ready(
-            int(user_id),
-            int(task.id),
-            analysis_type,
-            request_hash,
-            fingerprint,
-        )
-        if ready is not None:
-            return ready
 
-        token = await self._insert_or_claim(
-            int(user_id),
-            int(task.id),
-            analysis_type,
-            request_hash,
-            fingerprint,
-        )
-        result = compute()
-        if inspect.isawaitable(result):
-            result = await result
-        await self._publish(token, encode_payload(analysis_type, result))
+        try:
+            while True:
+                claim = await self._lookup_or_claim(scope, fingerprint)
+                if claim.action == "hit":
+                    return claim.payload
+                if claim.action in {"wait", "retry"}:
+                    await asyncio.sleep(self.poll_seconds)
+                    continue
+                break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "prediction analysis cache lookup failed: %s",
+                scope["request_hash"][:12],
+            )
+            return await _resolve_compute(compute)
+
+        try:
+            result = await _resolve_compute(compute)
+        except asyncio.CancelledError:
+            await self._mark_failed(
+                claim.row_id, claim.token, "cancelled"
+            )
+            raise
+        except Exception as exc:
+            try:
+                await self._mark_failed(
+                    claim.row_id, claim.token, str(exc)[:500]
+                )
+            except Exception:
+                logger.exception(
+                    "prediction analysis cache failure state could not be stored"
+                )
+            raise
+
+        try:
+            await self._publish(
+                claim.row_id,
+                claim.token,
+                encode_payload(analysis_type, result),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "prediction analysis cache publish failed: %s",
+                scope["request_hash"][:12],
+            )
         return result
 
-    async def _read_ready(
-        self,
-        user_id,
-        task_id,
-        analysis_type,
-        request_hash,
-        fingerprint,
-    ):
-        async with self.sessionmaker() as session:
-            row = (
-                await session.execute(
-                    select(PredictionAnalysisCache).where(
-                        PredictionAnalysisCache.user_id == user_id,
-                        PredictionAnalysisCache.training_task_id == task_id,
-                        PredictionAnalysisCache.analysis_type == analysis_type,
-                        PredictionAnalysisCache.request_hash == request_hash,
-                        PredictionAnalysisCache.artifact_fingerprint
-                        == fingerprint,
-                        PredictionAnalysisCache.status == "ready",
-                    )
-                )
-            ).scalar_one_or_none()
-
-        if row is None or row.payload is None:
-            return None
-        return decode_payload(analysis_type, row.payload)
-
-    async def _insert_or_claim(
-        self,
-        user_id,
-        task_id,
-        analysis_type,
-        request_hash,
-        fingerprint,
-    ):
-        token = str(uuid.uuid4())
+    async def _lookup_or_claim(self, scope, fingerprint) -> CacheClaim:
         now = datetime.now(timezone.utc)
         async with self.sessionmaker() as session:
             row = (
                 await session.execute(
                     select(PredictionAnalysisCache).where(
-                        PredictionAnalysisCache.user_id == user_id,
-                        PredictionAnalysisCache.training_task_id == task_id,
-                        PredictionAnalysisCache.analysis_type == analysis_type,
-                        PredictionAnalysisCache.request_hash == request_hash,
+                        PredictionAnalysisCache.user_id
+                        == scope["user_id"],
+                        PredictionAnalysisCache.training_task_id
+                        == scope["training_task_id"],
+                        PredictionAnalysisCache.analysis_type
+                        == scope["analysis_type"],
+                        PredictionAnalysisCache.request_hash
+                        == scope["request_hash"],
                     )
                 )
             ).scalar_one_or_none()
+
             if row is None:
+                token = str(uuid.uuid4())
                 row = PredictionAnalysisCache(
-                    user_id=user_id,
-                    training_task_id=task_id,
-                    analysis_type=analysis_type,
-                    request_hash=request_hash,
+                    **scope,
                     artifact_fingerprint=fingerprint,
+                    status="computing",
+                    lease_token=token,
+                    lease_expires_at=now
+                    + timedelta(seconds=self.lease_seconds),
+                    updated_at=now,
                 )
                 session.add(row)
+                try:
+                    await session.commit()
+                    await session.refresh(row)
+                except IntegrityError:
+                    await session.rollback()
+                    return CacheClaim("retry")
+                return CacheClaim(
+                    "compute", row_id=row.id, token=token
+                )
 
-            row.artifact_fingerprint = fingerprint
-            row.status = "computing"
-            row.payload = None
-            row.lease_token = token
-            row.lease_expires_at = now + timedelta(
-                seconds=self.lease_seconds
+            if (
+                row.status == "ready"
+                and row.artifact_fingerprint == fingerprint
+                and row.payload
+            ):
+                try:
+                    return CacheClaim(
+                        "hit",
+                        row_id=row.id,
+                        payload=decode_payload(
+                            scope["analysis_type"], row.payload
+                        ),
+                    )
+                except CachePayloadError:
+                    pass
+
+            if (
+                row.status == "computing"
+                and row.artifact_fingerprint == fingerprint
+                and _lease_is_active(row.lease_expires_at, now)
+            ):
+                return CacheClaim("wait", row_id=row.id)
+
+            token = str(uuid.uuid4())
+            conditions = [PredictionAnalysisCache.id == row.id]
+            if row.status == "computing":
+                conditions.append(
+                    PredictionAnalysisCache.lease_token
+                    == row.lease_token
+                )
+            else:
+                conditions.extend(
+                    [
+                        PredictionAnalysisCache.status == row.status,
+                        PredictionAnalysisCache.artifact_fingerprint
+                        == row.artifact_fingerprint,
+                    ]
+                )
+            result = await session.execute(
+                update(PredictionAnalysisCache)
+                .where(*conditions)
+                .values(
+                    artifact_fingerprint=fingerprint,
+                    status="computing",
+                    payload=None,
+                    lease_token=token,
+                    lease_expires_at=now
+                    + timedelta(seconds=self.lease_seconds),
+                    last_error=None,
+                    updated_at=now,
+                )
             )
-            row.last_error = None
+            if result.rowcount != 1:
+                await session.rollback()
+                return CacheClaim("retry")
             await session.commit()
-        return token
+            return CacheClaim(
+                "compute", row_id=row.id, token=token
+            )
 
-    async def _publish(self, token, payload):
+    async def _publish(self, row_id, token, payload):
         async with self.sessionmaker() as session:
             result = await session.execute(
                 update(PredictionAnalysisCache)
                 .where(
+                    PredictionAnalysisCache.id == row_id,
                     PredictionAnalysisCache.lease_token == token,
                     PredictionAnalysisCache.status == "computing",
                 )
@@ -328,4 +420,24 @@ class PredictionAnalysisCacheService:
                 raise RuntimeError(
                     "Prediction analysis cache lease was lost"
                 )
+            await session.commit()
+
+    async def _mark_failed(self, row_id, token, error):
+        async with self.sessionmaker() as session:
+            await session.execute(
+                update(PredictionAnalysisCache)
+                .where(
+                    PredictionAnalysisCache.id == row_id,
+                    PredictionAnalysisCache.status == "computing",
+                    PredictionAnalysisCache.lease_token == token,
+                )
+                .values(
+                    status="failed",
+                    payload=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    last_error=str(error)[:500],
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
             await session.commit()

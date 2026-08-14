@@ -13,6 +13,7 @@ if str(BACKEND_DIR) not in sys.path:
 def import_training_service_with_stubs():
     if "sqlalchemy" not in sys.modules:
         sqlalchemy = types.ModuleType("sqlalchemy")
+        sqlalchemy.delete = lambda *args, **kwargs: None
         sqlalchemy.select = lambda *args, **kwargs: None
         sqlalchemy.update = lambda *args, **kwargs: None
         sys.modules["sqlalchemy"] = sqlalchemy
@@ -28,6 +29,7 @@ def import_training_service_with_stubs():
 
     models = types.ModuleType("database.models")
     models.ModelTrainingTask = object
+    models.PredictionAnalysisCache = object
     models.User = object
     sys.modules["database.models"] = models
 

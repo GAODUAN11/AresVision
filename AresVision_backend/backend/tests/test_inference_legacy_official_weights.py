@@ -25,6 +25,7 @@ def install_service_import_stubs():
 
     models = types.ModuleType("database.models")
     models.ModelTrainingTask = object
+    models.PredictionAnalysisCache = object
     sys.modules["database.models"] = models
 
     metrics = types.ModuleType("core.metrics")
@@ -131,6 +132,7 @@ def test_predict_task_supports_legacy_official_weights(tmp_path):
             mars_year=27,
             ls_start=90.0,
             horizon=2,
+            current_user=SimpleNamespace(id=7, role="user"),
         )
     )
 
@@ -163,6 +165,7 @@ def test_task_test_set_metrics_supports_legacy_official_weights(tmp_path):
             mars_year=27,
             ls_start=90.0,
             horizon=2,
+            current_user=SimpleNamespace(id=7, role="user"),
         )
     )
 

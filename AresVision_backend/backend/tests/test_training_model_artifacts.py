@@ -20,12 +20,17 @@ sqlalchemy.select = lambda *args, **kwargs: None
 sqlalchemy.update = lambda *args, **kwargs: None
 sys.modules.setdefault("sqlalchemy", sqlalchemy)
 
+sqlalchemy_exc = types.ModuleType("sqlalchemy.exc")
+sqlalchemy_exc.IntegrityError = type("IntegrityError", (Exception,), {})
+sys.modules.setdefault("sqlalchemy.exc", sqlalchemy_exc)
+
 engine = types.ModuleType("database.engine")
 engine.async_session_maker = None
 sys.modules["database.engine"] = engine
 
 models = types.ModuleType("database.models")
 models.ModelTrainingTask = object
+models.PredictionAnalysisCache = object
 sys.modules["database.models"] = models
 
 data_service = types.ModuleType("services.data_service")

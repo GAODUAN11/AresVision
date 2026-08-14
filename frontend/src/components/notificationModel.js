@@ -33,3 +33,11 @@ export function getRelatedTrainingTaskId(notification) {
   const taskId = Number(notification?.related_training_task_id);
   return Number.isInteger(taskId) && taskId > 0 ? taskId : null;
 }
+
+export function parseNotificationTimestamp(isoString) {
+  if (typeof isoString !== 'string' || !isoString.trim()) return Number.NaN;
+
+  const value = isoString.trim();
+  const hasTimezone = /(?:z|[+-]\d{2}:\d{2})$/i.test(value);
+  return Date.parse(hasTimezone ? value : `${value}Z`);
+}

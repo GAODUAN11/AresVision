@@ -11,7 +11,11 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useTraining } from '../contexts/TrainingContext';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/api';
-import { getNotificationVisual, getRelatedTrainingTaskId } from './notificationModel';
+import {
+  getNotificationVisual,
+  getRelatedTrainingTaskId,
+  parseNotificationTimestamp,
+} from './notificationModel';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -57,8 +61,10 @@ function BellEmptyIcon({ size = 44, color = 'currentColor' }) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeTime(isoStr, t) {
-  const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
-  const diff = Date.now() - new Date(utc).getTime();
+  const timestamp = parseNotificationTimestamp(isoStr);
+  if (Number.isNaN(timestamp)) return t('notification.justNow');
+
+  const diff = Math.max(0, Date.now() - timestamp);
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return t('notification.justNow');
   if (mins < 60) return t('notification.minutesAgo', { n: mins });
@@ -339,7 +345,7 @@ function NotificationPanelInner({ open, onClose, onReadCountChange, onNavigate }
       />
       <div
         style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0, width: 420,
+          position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(420px, 100vw)',
           zIndex: 3000,
           background: 'var(--bg-card-strong)',
           backdropFilter: 'blur(18px)',

@@ -35,12 +35,17 @@ from routers import predict  # noqa: E402
 from schemas.predict import PredictRequest  # noqa: E402
 
 
+AUTHENTICATED_USER = types.SimpleNamespace(id=7, role="user")
+
+
 class FakeTrainingInferenceService:
     def __init__(self):
         self.prediction_calls = []
         self.metric_calls = []
         self.test_set_metric_calls = []
         self.compare_metric_calls = []
+        self.compare_error_calls = []
+        self.compare_pfi_calls = []
         self.error_distribution_calls = []
         self.pfi_calls = []
 
@@ -108,6 +113,14 @@ class FakeTrainingInferenceService:
             ]
         }
 
+    async def compare_task_error_distributions(self, **kwargs):
+        self.compare_error_calls.append(kwargs)
+        return {"items": []}
+
+    async def compare_task_permutation_importance(self, **kwargs):
+        self.compare_pfi_calls.append(kwargs)
+        return {"items": []}
+
     async def task_permutation_importance(self, **kwargs):
         self.pfi_calls.append(kwargs)
         return {
@@ -154,19 +167,23 @@ async def test_predict_run_uses_training_task_inference_when_task_id_is_present(
     service = FakeTrainingInferenceService()
     body = PredictRequest(training_task_id=42, selected_variables=["U_Wind"], horizon=3, ls_start=90, mars_year=27)
 
-    payload = await predict.run_prediction(_request(service), body, data_source="default", current_user=None)
+    payload = await predict.run_prediction(
+        _request(service), body, data_source="default", current_user=AUTHENTICATED_USER
+    )
 
     assert payload["model_info"]["model_source"] == "trained_task"
     assert payload["model_info"]["training_task_id"] == 42
     assert service.prediction_calls[0]["task_id"] == 42
-    assert service.prediction_calls[0]["current_user"] is None
+    assert service.prediction_calls[0]["current_user"] is AUTHENTICATED_USER
 
 
 async def test_predict_metrics_uses_training_task_test_set_metrics_when_task_id_is_present():
     service = FakeTrainingInferenceService()
     body = PredictRequest(training_task_id=42, selected_variables=["U_Wind"], horizon=3, ls_start=90, mars_year=27)
 
-    payload = await predict.get_eval_metrics(_request(service), body, data_source="default", current_user=None)
+    payload = await predict.get_eval_metrics(
+        _request(service), body, data_source="default", current_user=AUTHENTICATED_USER
+    )
 
     assert payload["overall"]["rmse"] == 3.47
     assert service.test_set_metric_calls[0]["task_id"] == 42
@@ -176,7 +193,9 @@ async def test_predict_metrics_uses_training_task_test_set_metrics_when_task_id_
 async def test_trained_model_request_fails_when_training_inference_service_is_missing():
     body = PredictRequest(training_task_id=42, ls_start=90, mars_year=27)
     try:
-        await predict.run_prediction(_request(), body, data_source="default", current_user=None)
+        await predict.run_prediction(
+            _request(), body, data_source="default", current_user=AUTHENTICATED_USER
+        )
     except predict.HTTPException as exc:
         assert exc.status_code == 500
         assert "training inference service unavailable" in exc.detail
@@ -197,7 +216,7 @@ def test_trained_model_request_returns_model_file_detail_when_weight_disappears(
                 _request(MissingWeightInferenceService()),
                 body,
                 data_source="default",
-                current_user=None,
+                current_user=AUTHENTICATED_USER,
             )
         )
     except predict.HTTPException as exc:
@@ -217,7 +236,7 @@ async def test_permutation_importance_uses_training_task_service_when_task_id_is
         mars_year=27,
         ls_start=90,
         horizon=3,
-        current_user=None,
+        current_user=AUTHENTICATED_USER,
     )
 
     assert payload["items"][0]["name"] == "Ozone"
@@ -233,7 +252,7 @@ async def test_error_distribution_uses_training_task_test_set_when_task_id_is_pr
         vars="Temperature",
         training_task_id=42,
         horizon=3,
-        current_user=None,
+        current_user=AUTHENTICATED_USER,
     )
 
     assert payload["mae"] == 0.5
@@ -247,14 +266,55 @@ async def test_training_model_compare_uses_batch_test_set_metrics_service():
     payload = await predict.compare_training_models(
         _request(service),
         predict.TrainingModelCompareRequest(task_ids=[12, 18], horizon=3),
-        current_user=None,
+        current_user=AUTHENTICATED_USER,
     )
 
     assert payload["items"][0]["task_id"] == 12
     assert payload["items"][1]["metrics"]["overall"]["r2"] == 0.7
     assert service.compare_metric_calls[0]["task_ids"] == [12, 18]
     assert service.compare_metric_calls[0]["horizon"] == 3
-    assert service.compare_metric_calls[0]["current_user"] is None
+    assert service.compare_metric_calls[0]["current_user"] is AUTHENTICATED_USER
+
+
+async def test_trained_model_analysis_requires_authenticated_user_before_service_call():
+    service = FakeTrainingInferenceService()
+    body = PredictRequest(training_task_id=42, horizon=3, ls_start=90, mars_year=27)
+    compare_body = predict.TrainingModelCompareRequest(task_ids=[12, 18], horizon=3)
+    requests = (
+        lambda: predict.run_prediction(_request(service), body, current_user=None),
+        lambda: predict.get_eval_metrics(_request(service), body, current_user=None),
+        lambda: predict.get_error_distribution(
+            _request(service), vars="Temperature", training_task_id=42, current_user=None
+        ),
+        lambda: predict.get_permutation_importance(
+            _request(service), vars="Temperature", training_task_id=42, current_user=None
+        ),
+        lambda: predict.compare_training_models(
+            _request(service), compare_body, current_user=None
+        ),
+        lambda: predict.compare_training_model_error_distributions(
+            _request(service), compare_body, current_user=None
+        ),
+        lambda: predict.compare_training_model_pfi(
+            _request(service), compare_body, current_user=None
+        ),
+    )
+
+    for call in requests:
+        try:
+            await call()
+        except predict.HTTPException as exc:
+            assert exc.status_code == 401
+        else:
+            raise AssertionError("Expected anonymous trained-model analysis to return 401")
+
+    assert service.prediction_calls == []
+    assert service.test_set_metric_calls == []
+    assert service.error_distribution_calls == []
+    assert service.pfi_calls == []
+    assert service.compare_metric_calls == []
+    assert service.compare_error_calls == []
+    assert service.compare_pfi_calls == []
 
 
 if __name__ == "__main__":
@@ -264,4 +324,5 @@ if __name__ == "__main__":
     asyncio.run(test_permutation_importance_uses_training_task_service_when_task_id_is_present())
     asyncio.run(test_error_distribution_uses_training_task_test_set_when_task_id_is_present())
     asyncio.run(test_training_model_compare_uses_batch_test_set_metrics_service())
+    asyncio.run(test_trained_model_analysis_requires_authenticated_user_before_service_call())
     print("trained model predict contract tests passed")

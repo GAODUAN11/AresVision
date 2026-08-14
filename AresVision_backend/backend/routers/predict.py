@@ -40,6 +40,15 @@ def _get_training_inference_service(request: Request):
     return service
 
 
+def _require_trained_model_user(current_user: User | None) -> User:
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication is required for trained-model analysis",
+        )
+    return current_user
+
+
 def _normalize_predict_source(data_source: str | None) -> str:
     requested = (data_source or "default").strip().lower()
     if requested == "personal":
@@ -108,6 +117,7 @@ async def run_prediction(
     """
     try:
         if body.training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             result = await service.predict_task(
                 task_id=body.training_task_id,
@@ -177,6 +187,7 @@ async def get_eval_metrics(
     """鑾峰彇棰勬祴璇勪及鎸囨爣锛圧MSE, MAE, SSIM, R虏锛?"""
     try:
         if body.training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             metrics = await service.task_test_set_metrics(
                 task_id=body.training_task_id,
@@ -225,6 +236,7 @@ async def compare_training_models(
 ):
     """Compare completed training models using full test-set metrics."""
     try:
+        current_user = _require_trained_model_user(current_user)
         service = _get_training_inference_service(request)
         return await service.compare_task_test_set_metrics(
             task_ids=body.task_ids,
@@ -249,6 +261,7 @@ async def compare_training_model_error_distributions(
 ):
     """Compare completed training models using full test-set error distributions."""
     try:
+        current_user = _require_trained_model_user(current_user)
         service = _get_training_inference_service(request)
         return await service.compare_task_error_distributions(
             task_ids=body.task_ids,
@@ -273,6 +286,7 @@ async def compare_training_model_pfi(
 ):
     """Compare completed training models using full test-set permutation importance."""
     try:
+        current_user = _require_trained_model_user(current_user)
         service = _get_training_inference_service(request)
         return await service.compare_task_permutation_importance(
             task_ids=body.task_ids,
@@ -460,6 +474,7 @@ async def get_error_distribution(
     try:
         selected_variables = [v.strip() for v in vars.split(",") if v.strip()]
         if training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             return await service.task_error_distribution(
                 task_id=training_task_id,
@@ -498,6 +513,7 @@ async def get_permutation_importance(
     try:
         selected_variables = [v.strip() for v in vars.split(",") if v.strip()]
         if training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             return await service.task_permutation_importance(
                 task_id=training_task_id,

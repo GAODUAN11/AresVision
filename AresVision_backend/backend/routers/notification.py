@@ -20,6 +20,19 @@ from database.models import Notification, User
 router = APIRouter(prefix="/notification", tags=["通知"])
 
 
+def serialize_notification(notification: Notification) -> dict:
+    return {
+        "id": notification.id,
+        "type": notification.type,
+        "title": notification.title,
+        "content": notification.content,
+        "is_read": notification.is_read,
+        "related_upload_id": notification.related_upload_id,
+        "related_training_task_id": notification.related_training_task_id,
+        "created_at": notification.created_at.isoformat(),
+    }
+
+
 # ─── GET /list ────────────────────────────────────────────────────────────────
 
 @router.get("/list")
@@ -36,18 +49,7 @@ async def get_notifications(
         )
         rows = (await db.execute(stmt)).scalars().all()
 
-    return [
-        {
-            "id": n.id,
-            "type": n.type,
-            "title": n.title,
-            "content": n.content,
-            "is_read": n.is_read,
-            "related_upload_id": n.related_upload_id,
-            "created_at": n.created_at.isoformat(),
-        }
-        for n in rows
-    ]
+    return [serialize_notification(notification) for notification in rows]
 
 
 # ─── GET /unread-count ────────────────────────────────────────────────────────

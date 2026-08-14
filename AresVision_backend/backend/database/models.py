@@ -153,11 +153,13 @@ class Notification(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    type: Mapped[str] = mapped_column(String(30), nullable=False)  # "approved" | "rejected" | "revoked"
+    # approved | rejected | revoked | training_oom
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     related_upload_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    related_training_task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
 
     # 关系

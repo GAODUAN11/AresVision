@@ -365,3 +365,45 @@ def test_publish_failure_returns_fresh_result(tmp_path, monkeypatch):
         return result
 
     assert asyncio.run(run()) == _metric(4.0)
+
+
+def test_deleting_training_task_removes_analysis_cache_rows(
+    tmp_path, monkeypatch
+):
+    async def run():
+        engine, sessions, user_a, _user_b, task, data_dirs = (
+            await _database(tmp_path)
+        )
+        await PredictionAnalysisCacheService(sessions).get_or_compute(
+            user_id=user_a,
+            task=task,
+            analysis_type="metrics",
+            request_params={"horizon": 3},
+            data_dirs=data_dirs,
+            compute=lambda: _metric(1.0),
+        )
+        async with sessions() as session:
+            stored_task = await session.get(ModelTrainingTask, task.id)
+            stored_task.log_file_path = None
+            stored_task.output_model_path = None
+            await session.commit()
+
+        from services import training_service
+
+        monkeypatch.setattr(
+            training_service, "async_session_maker", sessions
+        )
+        deleted = await training_service.TrainingService().delete_task(task.id)
+
+        async with sessions() as session:
+            remaining_task = await session.get(ModelTrainingTask, task.id)
+            remaining_cache_rows = (
+                await session.execute(select(PredictionAnalysisCache))
+            ).scalars().all()
+        await engine.dispose()
+        return deleted, remaining_task, remaining_cache_rows
+
+    deleted, remaining_task, remaining_cache_rows = asyncio.run(run())
+    assert deleted is True
+    assert remaining_task is None
+    assert remaining_cache_rows == []

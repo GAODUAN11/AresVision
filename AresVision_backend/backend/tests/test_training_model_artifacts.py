@@ -16,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 
 sqlalchemy = types.ModuleType("sqlalchemy")
+sqlalchemy.delete = lambda *args, **kwargs: None
 sqlalchemy.select = lambda *args, **kwargs: None
 sqlalchemy.update = lambda *args, **kwargs: None
 sys.modules.setdefault("sqlalchemy", sqlalchemy)

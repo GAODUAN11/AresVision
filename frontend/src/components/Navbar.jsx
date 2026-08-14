@@ -435,6 +435,7 @@ export default function Navbar({ current, onChange, onOpenAdmin, onOpenFeedback,
         open={notifOpen}
         onClose={() => setNotifOpen(false)}
         onReadCountChange={fetchUnreadCount}
+        onNavigate={onChange}
       />
     </nav>
   );

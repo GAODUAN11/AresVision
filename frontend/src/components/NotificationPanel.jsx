@@ -8,8 +8,10 @@ import ReactDOM from 'react-dom';
 import C from '../constants/colors';
 import { useT } from '../i18n';
 import { useSettings } from '../contexts/SettingsContext';
+import { useTraining } from '../contexts/TrainingContext';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../services/api';
+import { getNotificationVisual, getRelatedTrainingTaskId } from './notificationModel';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -66,32 +68,38 @@ function relativeTime(isoStr, t) {
   return t('notification.daysAgo', { n: days });
 }
 
-function typeIcon(type) {
-  if (type === 'approved') return { icon: '✓', color: '#22c55e', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.30)' };
-  if (type === 'rejected') return { icon: '✕', color: C.mars,    bg: 'rgba(199,91,57,0.12)', border: 'rgba(199,91,57,0.30)' };
-  return { icon: '⚠', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.30)' };
-}
-
 // ─── NotificationCard ─────────────────────────────────────────────────────────
 
-function NotificationCard({ notif, t, isLight, onMarkRead }) {
-  const { icon, color, bg, border } = typeIcon(notif.type);
+function NotificationCard({ notif, t, onMarkRead, onSelect }) {
+  const { icon, color, bg, border } = getNotificationVisual(notif.type);
+  const isActionable = getRelatedTrainingTaskId(notif) !== null;
   const cardBg = 'var(--bg-muted)';
   const cardBorder = notif.is_read
     ? 'var(--border)'
     : C.blue;
 
   return (
-    <div style={{
-      background: cardBg,
-      border: `1px solid ${cardBorder}`,
-      borderLeft: `3px solid ${notif.is_read ? 'var(--border)' : C.blue}`,
-      borderRadius: 10,
-      padding: '12px 14px',
-      display: 'flex', gap: 12, alignItems: 'flex-start',
-      opacity: notif.is_read ? 0.72 : 1,
-      transition: 'opacity 0.2s',
-    }}>
+    <div
+      role={isActionable ? 'button' : undefined}
+      tabIndex={isActionable ? 0 : undefined}
+      onClick={isActionable ? () => onSelect(notif) : undefined}
+      onKeyDown={isActionable ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(notif);
+        }
+      } : undefined}
+      style={{
+        background: cardBg,
+        border: `1px solid ${cardBorder}`,
+        borderLeft: `3px solid ${notif.is_read ? 'var(--border)' : C.blue}`,
+        borderRadius: 10,
+        padding: '12px 14px',
+        display: 'flex', gap: 12, alignItems: 'flex-start',
+        opacity: notif.is_read ? 0.72 : 1,
+        transition: 'opacity 0.2s',
+        cursor: isActionable ? 'pointer' : 'default',
+      }}>
       {/* Type badge */}
       <div style={{
         width: 28, height: 28, borderRadius: '50%',
@@ -124,11 +132,14 @@ function NotificationCard({ notif, t, isLight, onMarkRead }) {
       </div>
 
       {/* Mark read button (only for unread) */}
-        {!notif.is_read && (
-          <button
-            onClick={() => onMarkRead(notif.id)}
-            title={t('notification.markAllRead')}
-            style={{
+      {!notif.is_read && (
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onMarkRead(notif.id);
+          }}
+          title={t('notification.markAllRead')}
+          style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--text-30)', padding: 2, flexShrink: 0,
             display: 'flex', alignItems: 'center',
@@ -143,7 +154,8 @@ function NotificationCard({ notif, t, isLight, onMarkRead }) {
 
 // ─── Panel Content ─────────────────────────────────────────────────────────────
 
-function PanelContent({ t, isLight, onClose, onReadCountChange }) {
+function PanelContent({ t, onClose, onReadCountChange, onNavigate }) {
+  const { setActiveTaskId } = useTraining();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -185,6 +197,27 @@ function PanelContent({ t, isLight, onClose, onReadCountChange }) {
       // 静默失败
     }
   }, [onReadCountChange]);
+
+  const handleSelect = useCallback(async (notification) => {
+    const taskId = getRelatedTrainingTaskId(notification);
+    if (taskId === null) return;
+
+    if (!notification.is_read) {
+      try {
+        await markNotificationRead(notification.id);
+        setNotifications(prev => prev.map(n => (
+          n.id === notification.id ? { ...n, is_read: true } : n
+        )));
+        onReadCountChange?.();
+      } catch {
+        // Navigation remains available if marking the notification read fails.
+      }
+    }
+
+    setActiveTaskId(taskId);
+    onClose();
+    onNavigate?.('training');
+  }, [onClose, onNavigate, onReadCountChange, setActiveTaskId]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
@@ -266,8 +299,8 @@ function PanelContent({ t, isLight, onClose, onReadCountChange }) {
             key={notif.id}
             notif={notif}
             t={t}
-            isLight={isLight}
             onMarkRead={handleMarkRead}
+            onSelect={handleSelect}
           />
         ))}
       </div>
@@ -277,7 +310,7 @@ function PanelContent({ t, isLight, onClose, onReadCountChange }) {
 
 // ─── Panel Wrapper ────────────────────────────────────────────────────────────
 
-function NotificationPanelInner({ open, onClose, onReadCountChange }) {
+function NotificationPanelInner({ open, onClose, onReadCountChange, onNavigate }) {
   const { settings } = useSettings();
   const t = useT();
   const isLight = settings.theme === 'light';
@@ -320,9 +353,9 @@ function NotificationPanelInner({ open, onClose, onReadCountChange }) {
         {open && (
           <PanelContent
             t={t}
-            isLight={isLight}
             onClose={onClose}
             onReadCountChange={onReadCountChange}
+            onNavigate={onNavigate}
           />
         )}
       </div>
@@ -330,9 +363,14 @@ function NotificationPanelInner({ open, onClose, onReadCountChange }) {
   );
 }
 
-export default function NotificationPanel({ open, onClose, onReadCountChange }) {
+export default function NotificationPanel({ open, onClose, onReadCountChange, onNavigate }) {
   return ReactDOM.createPortal(
-    <NotificationPanelInner open={open} onClose={onClose} onReadCountChange={onReadCountChange} />,
+    <NotificationPanelInner
+      open={open}
+      onClose={onClose}
+      onReadCountChange={onReadCountChange}
+      onNavigate={onNavigate}
+    />,
     document.body
   );
 }

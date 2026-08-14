@@ -650,21 +650,33 @@ class TrainingService:
                                 "error": "GPU memory is exhausted",
                             }
                         )
-                        try:
-                            await ensure_cuda_oom_notification(session, task)
-                        except Exception:
-                            logger.exception(
-                                "Could not create CUDA OOM notification: task_id=%s",
-                                task_id,
-                            )
                     await session.commit()
 
-                    await ws_manager.broadcast_to_task(str(task_id), {
-                        "type": "status_update",
-                        "task_id": task_id,
-                        "status": status,
-                    })
-                    logger.info("Training task finished: id=%s status=%s", task_id, status)
+            if task and failure_code == CUDA_OOM_ERROR_CODE:
+                try:
+                    async with async_session_maker() as notification_session:
+                        notification_task = await notification_session.get(
+                            ModelTrainingTask,
+                            task_id,
+                        )
+                        if notification_task and await ensure_cuda_oom_notification(
+                            notification_session,
+                            notification_task,
+                        ):
+                            await notification_session.commit()
+                except Exception:
+                    logger.exception(
+                        "Could not create CUDA OOM notification: task_id=%s",
+                        task_id,
+                    )
+
+            if task:
+                await ws_manager.broadcast_to_task(str(task_id), {
+                    "type": "status_update",
+                    "task_id": task_id,
+                    "status": status,
+                })
+                logger.info("Training task finished: id=%s status=%s", task_id, status)
 
         except Exception:
             error_msg = traceback.format_exc()

@@ -99,8 +99,9 @@ class _FailedProcess:
 
 
 class _TaskSession:
-    def __init__(self, task):
+    def __init__(self, task, commit_side_effect=None):
         self.task = task
+        self.commit_side_effect = commit_side_effect
 
     async def __aenter__(self):
         return self
@@ -113,6 +114,8 @@ class _TaskSession:
         return self.task
 
     async def commit(self):
+        if self.commit_side_effect:
+            raise self.commit_side_effect
         return None
 
 
@@ -247,7 +250,14 @@ def test_invalid_artifact_final_state_wins_over_queued_progress_update(monkeypat
     assert task.progress < 100.0
 
 
-def _run_failed_training(monkeypatch, tmp_path, log_lines, notification_side_effect=None):
+def _run_failed_training(
+    monkeypatch,
+    tmp_path,
+    log_lines,
+    notification_side_effect=None,
+    notification_commit_side_effect=None,
+    return_session_calls=False,
+):
     output_path = tmp_path / "failed.pth"
     log_file = tmp_path / "failed.log"
     task = SimpleNamespace(
@@ -263,7 +273,16 @@ def _run_failed_training(monkeypatch, tmp_path, log_lines, notification_side_eff
         metrics=None,
     )
     broadcaster = _BroadcastRecorder()
-    monkeypatch.setattr(training_module, "async_session_maker", lambda: _TaskSession(task))
+    session_calls = []
+
+    def session_factory():
+        session_calls.append(len(session_calls) + 1)
+        commit_side_effect = (
+            notification_commit_side_effect if len(session_calls) > 4 else None
+        )
+        return _TaskSession(task, commit_side_effect=commit_side_effect)
+
+    monkeypatch.setattr(training_module, "async_session_maker", session_factory)
     monkeypatch.setattr(
         training_module.subprocess,
         "Popen",
@@ -291,7 +310,10 @@ def _run_failed_training(monkeypatch, tmp_path, log_lines, notification_side_eff
             output_path=output_path,
         )
     )
-    return task, broadcaster, notification_writer
+    result = (task, broadcaster, notification_writer)
+    if return_session_calls:
+        return (*result, session_calls)
+    return result
 
 
 def test_cuda_oom_failure_records_metrics_and_notification(monkeypatch, tmp_path):
@@ -328,6 +350,21 @@ def test_notification_write_failure_does_not_block_terminal_task_state(monkeypat
 
     assert task.status == "failed"
     notification_writer.assert_awaited_once()
+    assert broadcaster.messages[-1][1]["status"] == "failed"
+
+
+def test_notification_commit_failure_does_not_block_terminal_task_state(monkeypatch, tmp_path):
+    task, broadcaster, notification_writer, session_calls = _run_failed_training(
+        monkeypatch,
+        tmp_path,
+        ["CUDA out of memory\n"],
+        notification_commit_side_effect=RuntimeError("notification commit failed"),
+        return_session_calls=True,
+    )
+
+    assert task.status == "failed"
+    notification_writer.assert_awaited_once()
+    assert len(session_calls) == 5
     assert broadcaster.messages[-1][1]["status"] == "failed"
 
 

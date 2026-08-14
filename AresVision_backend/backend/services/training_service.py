@@ -31,12 +31,14 @@ from database.models import ModelTrainingTask
 from services.data_service import DataService
 from services.personal_data_source_service import PersonalDataSourceService
 from services.model_artifacts import is_valid_model_weight_file
+from services.training_failures import CUDA_OOM_ERROR_CODE, classify_training_log
 from services.training_channels import (
     ARCHITECTURE_PARAM_KEYS,
     UNIFIED_TRAINING_SCRIPT,
     build_hyperparameter_args,
     normalize_training_hyperparameters,
 )
+from services.training_notifications import ensure_cuda_oom_notification
 from services.training_paths import build_task_output_path
 import config
 
@@ -613,6 +615,9 @@ class TrainingService:
                     return_exceptions=True,
                 )
             returncode = await asyncio.to_thread(process.wait)
+            failure_code = (
+                classify_training_log(log_file) if returncode != 0 else None
+            )
             model_artifact_valid = returncode == 0 and is_valid_model_weight_file(output_path)
             status = "completed" if model_artifact_valid else "failed"
 
@@ -638,14 +643,40 @@ class TrainingService:
                     elif returncode == 0:
                         task.progress = min(float(task.progress or 0.0), 99.0)
                         task.metrics = json.dumps({"error": INVALID_MODEL_ARTIFACT_ERROR})
+                    elif failure_code == CUDA_OOM_ERROR_CODE:
+                        task.metrics = json.dumps(
+                            {
+                                "error_code": CUDA_OOM_ERROR_CODE,
+                                "error": "GPU memory is exhausted",
+                            }
+                        )
                     await session.commit()
 
-                    await ws_manager.broadcast_to_task(str(task_id), {
-                        "type": "status_update",
-                        "task_id": task_id,
-                        "status": status,
-                    })
-                    logger.info("Training task finished: id=%s status=%s", task_id, status)
+            if task and failure_code == CUDA_OOM_ERROR_CODE:
+                try:
+                    async with async_session_maker() as notification_session:
+                        notification_task = await notification_session.get(
+                            ModelTrainingTask,
+                            task_id,
+                        )
+                        if notification_task and await ensure_cuda_oom_notification(
+                            notification_session,
+                            notification_task,
+                        ):
+                            await notification_session.commit()
+                except Exception:
+                    logger.exception(
+                        "Could not create CUDA OOM notification: task_id=%s",
+                        task_id,
+                    )
+
+            if task:
+                await ws_manager.broadcast_to_task(str(task_id), {
+                    "type": "status_update",
+                    "task_id": task_id,
+                    "status": status,
+                })
+                logger.info("Training task finished: id=%s status=%s", task_id, status)
 
         except Exception:
             error_msg = traceback.format_exc()

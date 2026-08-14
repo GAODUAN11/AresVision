@@ -1,7 +1,7 @@
 """
 Database bootstrap:
 1. create tables if missing
-2. patch legacy SQLite schema for model_training_tasks
+2. patch legacy SQLite schemas
 3. create default admin if users table is empty
 """
 
@@ -71,6 +71,20 @@ async def _patch_personal_source_build_state_columns(conn) -> None:
             await conn.execute(
                 text(f"ALTER TABLE personal_source_build_states ADD COLUMN {col_name} {col_def}")
             )
+
+
+async def _patch_notification_table_columns(conn) -> None:
+    """Add missing columns for legacy notification tables."""
+    result = await conn.execute(text("PRAGMA table_info(notifications)"))
+    existing_columns = {row[1] for row in result.fetchall()}
+    if "related_training_task_id" not in existing_columns:
+        logger.info("Adding missing column notifications.related_training_task_id")
+        await conn.execute(
+            text(
+                "ALTER TABLE notifications "
+                "ADD COLUMN related_training_task_id INTEGER"
+            )
+        )
 
 
 async def migrate_training_task_output_paths(
@@ -159,6 +173,10 @@ async def init_database() -> None:
                 await _patch_personal_source_build_state_columns(conn)
             except Exception as exc:
                 logger.warning("Could not auto-patch personal_source_build_states schema: %s", exc)
+            try:
+                await _patch_notification_table_columns(conn)
+            except Exception as exc:
+                logger.warning("Could not auto-patch notifications schema: %s", exc)
 
         logger.info("Database schema initialization complete")
 

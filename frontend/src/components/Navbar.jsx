@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog';
 import ChangePasswordModal from './ChangePasswordModal';
 import NotificationPanel from './NotificationPanel';
 import { getPendingReviews, getUnreadCount } from '../services/api';
+import { NOTIFICATION_REFRESH_EVENT } from '../notifications/notificationEvents';
 
 const NAV_IDS = ['home', 'overview', 'training', 'predict', 'explore', 'ai', 'about'];
 
@@ -320,6 +321,11 @@ export default function Navbar({ current, onChange, onOpenAdmin, onOpenFeedback,
     const timer = setInterval(fetchUnreadCount, 60000);
     return () => clearInterval(timer);
   }, [fetchUnreadCount, user]);
+
+  useEffect(() => {
+    window.addEventListener(NOTIFICATION_REFRESH_EVENT, fetchUnreadCount);
+    return () => window.removeEventListener(NOTIFICATION_REFRESH_EVENT, fetchUnreadCount);
+  }, [fetchUnreadCount]);
 
   const navLabelStyle = (isActive) => ({
     fontSize: 'calc(11px * var(--font-scale, 1))',

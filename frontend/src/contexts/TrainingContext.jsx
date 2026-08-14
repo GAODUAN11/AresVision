@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { fetchTasks, fetchLogs } from '../services/api';
 import { useAuth } from './AuthContext';
 import { reconcileActiveTrainingTaskId } from './trainingTaskSelection';
+import { requestNotificationRefresh } from '../notifications/notificationEvents';
 
 const TrainingContext = createContext();
 
@@ -162,6 +163,9 @@ export const TrainingProvider = ({ children, enabled = true }) => {
           }
         } else if (msg.type === 'status_update') {
           loadTasksRef.current?.();
+          if (msg.status === 'failed') {
+            requestNotificationRefresh();
+          }
         }
       } catch (e) {
         console.error('WS parse error', e);

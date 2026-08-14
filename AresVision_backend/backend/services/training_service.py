@@ -18,7 +18,7 @@ from typing import Any
 import time
 import numpy as np
 import netCDF4 as nc
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from config import (
     MCD_VARIABLES,
@@ -27,7 +27,7 @@ from config import (
     USER_UPLOADS_DIR,
 )
 from database.engine import async_session_maker
-from database.models import ModelTrainingTask
+from database.models import ModelTrainingTask, PredictionAnalysisCache
 from services.data_service import DataService
 from services.personal_data_source_service import PersonalDataSourceService
 from services.model_artifacts import is_valid_model_weight_file
@@ -780,6 +780,11 @@ class TrainingService:
                 except Exception:
                     pass
 
+            await session.execute(
+                delete(PredictionAnalysisCache).where(
+                    PredictionAnalysisCache.training_task_id == task.id
+                )
+            )
             await session.delete(task)
             await session.commit()
             return True

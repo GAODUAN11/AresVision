@@ -21,7 +21,7 @@ def test_inference_service_validates_every_prepared_task_context():
 def test_trained_analysis_routes_preserve_horizon_validation_as_bad_requests():
     error_distribution_route = ROUTER_SOURCE.split(
         "async def get_error_distribution", 1
-    )[1].split("async def get_shapley_global", 1)[0]
+    )[1].split("async def get_permutation_importance", 1)[0]
     pfi_route = ROUTER_SOURCE.split(
         "async def get_permutation_importance", 1
     )[1]

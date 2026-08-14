@@ -6,7 +6,7 @@ import {
   migrateWorkflowConfigFromGraph,
 } from './workflowConfig.js';
 import { PALETTE_NODE_TEMPLATES, createInitialWorkflow } from './workflowLayout.js';
-import { WORKFLOW_NODE_TYPES } from './workflowSchema.js';
+import { WORKFLOW_NODE_TYPES, WORKFLOW_OUTPUTS } from './workflowSchema.js';
 
 const node = (id, type, data = {}) => ({ id, type: 'workflowNode', data: { workflowType: type, ...data } });
 const edge = (source, target) => ({ id: `${source}-${target}`, source, target });
@@ -30,6 +30,21 @@ test('initial workflow keeps data source, Mars context, and training config outs
   assert.equal(paletteTypes.has(WORKFLOW_NODE_TYPES.DATA_SOURCE), false);
   assert.equal(paletteTypes.has(WORKFLOW_NODE_TYPES.MARS_CONTEXT), false);
   assert.equal(paletteTypes.has(WORKFLOW_NODE_TYPES.TRAINING_CONFIG), false);
+});
+
+test('workflow palette excludes the removed attribution output', () => {
+  const outputs = PALETTE_NODE_TEMPLATES
+    .flatMap((group) => group.items)
+    .filter((item) => item.workflowType === WORKFLOW_NODE_TYPES.ANALYSIS_OUTPUT)
+    .map((item) => item.data.outputId);
+
+  assert.equal(Object.hasOwn(WORKFLOW_OUTPUTS, 'SHAP'), false);
+  assert.deepEqual(outputs, [
+    WORKFLOW_OUTPUTS.TRIPTYCH,
+    WORKFLOW_OUTPUTS.METRICS,
+    WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION,
+    WORKFLOW_OUTPUTS.PFI,
+  ]);
 });
 
 test('migrates legacy config nodes into external workflow config and removes their edges', () => {

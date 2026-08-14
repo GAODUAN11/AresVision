@@ -50,7 +50,6 @@ const EN_TEXT = {
     autoArrange: 'Auto Arrange',
     deleteSelection: 'Delete Selected',
     reset: 'Reset',
-    openShap: 'Open SHAP Panel',
   },
   status: {
     running: 'Running',
@@ -63,14 +62,12 @@ const EN_TEXT = {
     [WORKFLOW_OUTPUTS.METRICS]: 'Metrics',
     [WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION]: 'Error Distribution',
     [WORKFLOW_OUTPUTS.PFI]: 'PFI',
-    [WORKFLOW_OUTPUTS.SHAP]: 'SHAP',
   },
   outputShort: {
     [WORKFLOW_OUTPUTS.TRIPTYCH]: 'Triptych',
     [WORKFLOW_OUTPUTS.METRICS]: 'Metrics',
     [WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION]: 'Error Dist',
     [WORKFLOW_OUTPUTS.PFI]: 'PFI',
-    [WORKFLOW_OUTPUTS.SHAP]: 'SHAP',
   },
   inspector: {
     summaryTitle: 'Workflow Summary',
@@ -188,7 +185,6 @@ const ZH_TEXT = {
     autoArrange: '自动排列',
     deleteSelection: '删除选中',
     reset: '重置',
-    openShap: '打开 SHAP 面板',
   },
   status: {
     running: '运行中',
@@ -201,14 +197,12 @@ const ZH_TEXT = {
     [WORKFLOW_OUTPUTS.METRICS]: '指标',
     [WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION]: '误差分布',
     [WORKFLOW_OUTPUTS.PFI]: 'PFI',
-    [WORKFLOW_OUTPUTS.SHAP]: 'SHAP',
   },
   outputShort: {
     [WORKFLOW_OUTPUTS.TRIPTYCH]: '三联图',
     [WORKFLOW_OUTPUTS.METRICS]: '指标',
     [WORKFLOW_OUTPUTS.ERROR_DISTRIBUTION]: '误差分布',
     [WORKFLOW_OUTPUTS.PFI]: 'PFI',
-    [WORKFLOW_OUTPUTS.SHAP]: 'SHAP',
   },
   inspector: {
     summaryTitle: '工作流摘要',

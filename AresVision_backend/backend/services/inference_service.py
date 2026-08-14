@@ -20,6 +20,7 @@ from services.training_channels import (
 )
 from services.prediction_horizon import validate_prediction_horizon
 from services.model_artifacts import is_valid_model_weight_file
+from services.prediction_analysis_cache import PredictionAnalysisCacheService
 from training_backbones.model_zoo import (
     build_forecaster,
     normalize_model_architecture,
@@ -28,11 +29,12 @@ from training_backbones.model_zoo import (
 
 
 class InferenceService:
-    def __init__(self):
+    def __init__(self, analysis_cache=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.base_dir = Path(__file__).parent.parent
         self.openmars_dir = self.base_dir / "data" / "openmars"
         self.mcd_dir = Path(MCD_DIR)
+        self.analysis_cache = analysis_cache or PredictionAnalysisCacheService()
 
     def _load_task_state_dict(self, task):
         model_path = getattr(task, "output_model_path", None)
@@ -61,13 +63,14 @@ class InferenceService:
         )
         try:
             validate_prediction_horizon(hypers, horizon)
-            return await self._predict_task_with_context(
+            return await self._cached_prediction(
                 task=task,
                 hypers=hypers,
+                data_dirs=data_dirs,
+                user_id=current_user.id,
                 mars_year=mars_year,
                 ls_start=ls_start,
                 horizon=horizon,
-                data_dirs=data_dirs,
             )
         finally:
             self._cleanup_temp_data_root(temp_data_root)
@@ -111,9 +114,13 @@ class InferenceService:
         )
         try:
             validate_prediction_horizon(hypers, horizon)
-            if getattr(task, "model_source", "official") == "uploaded":
-                return self._uploaded_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
-            return self._official_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
+            return await self._cached_test_set_metrics(
+                task,
+                hypers,
+                data_dirs,
+                current_user.id,
+                horizon,
+            )
         finally:
             self._cleanup_temp_data_root(temp_data_root)
 
@@ -136,10 +143,13 @@ class InferenceService:
             )
             try:
                 validate_prediction_horizon(hypers, horizon)
-                if getattr(task, "model_source", "official") == "uploaded":
-                    metrics = self._uploaded_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
-                else:
-                    metrics = self._official_task_test_set_metrics(task, hypers, horizon, data_dirs=data_dirs)
+                metrics = await self._cached_test_set_metrics(
+                    task,
+                    hypers,
+                    data_dirs,
+                    current_user.id,
+                    horizon,
+                )
                 items.append({
                     **self._task_compare_metadata(task, hypers),
                     "metrics": metrics,
@@ -165,23 +175,12 @@ class InferenceService:
         )
         try:
             validate_prediction_horizon(hypers, horizon)
-            if getattr(task, "model_source", "official") == "uploaded":
-                truth_raw, pred_raw, actual_horizon = self._uploaded_task_test_set_arrays(
-                    task,
-                    hypers,
-                    horizon,
-                    data_dirs=data_dirs,
-                )
-            else:
-                truth_raw, pred_raw, actual_horizon = self._official_task_test_set_arrays(
-                    task,
-                    hypers,
-                    horizon,
-                    data_dirs=data_dirs,
-                )
-            return compute_error_distribution(
-                truth_raw[:, :actual_horizon],
-                pred_raw[:, :actual_horizon],
+            return await self._cached_error_distribution(
+                task,
+                hypers,
+                data_dirs,
+                current_user.id,
+                horizon,
             )
         finally:
             self._cleanup_temp_data_root(temp_data_root)
@@ -205,27 +204,17 @@ class InferenceService:
             )
             try:
                 validate_prediction_horizon(hypers, horizon)
-                if getattr(task, "model_source", "official") == "uploaded":
-                    truth_raw, pred_raw, actual_horizon = self._uploaded_task_test_set_arrays(
-                        task,
-                        hypers,
-                        horizon,
-                        data_dirs=data_dirs,
-                    )
-                else:
-                    truth_raw, pred_raw, actual_horizon = self._official_task_test_set_arrays(
-                        task,
-                        hypers,
-                        horizon,
-                        data_dirs=data_dirs,
-                    )
+                distribution = await self._cached_error_distribution(
+                    task,
+                    hypers,
+                    data_dirs,
+                    current_user.id,
+                    horizon,
+                )
                 items.append({
                     "task_id": int(task.id),
                     "model_name": self._task_model_name(task),
-                    "distribution": compute_error_distribution(
-                        truth_raw[:, :actual_horizon],
-                        pred_raw[:, :actual_horizon],
-                    ),
+                    "distribution": distribution,
                 })
             finally:
                 self._cleanup_temp_data_root(temp_data_root)
@@ -250,12 +239,13 @@ class InferenceService:
         )
         try:
             validate_prediction_horizon(hypers, horizon)
-            return self._task_permutation_importance_with_context(
-                task=task,
-                hypers=hypers,
-                selected_variables=selected_variables,
-                horizon=horizon,
-                data_dirs=data_dirs,
+            return await self._cached_permutation_importance(
+                task,
+                hypers,
+                data_dirs,
+                current_user.id,
+                horizon,
+                selected_variables,
             )
         finally:
             self._cleanup_temp_data_root(temp_data_root)
@@ -280,12 +270,13 @@ class InferenceService:
             try:
                 validate_prediction_horizon(hypers, horizon)
                 selected_variables = self._channels_to_variable_names(self._task_selected_channels(task, hypers))
-                pfi = self._task_permutation_importance_with_context(
-                    task=task,
-                    hypers=hypers,
-                    selected_variables=selected_variables,
-                    horizon=horizon,
-                    data_dirs=data_dirs,
+                pfi = await self._cached_permutation_importance(
+                    task,
+                    hypers,
+                    data_dirs,
+                    current_user.id,
+                    horizon,
+                    selected_variables,
                 )
                 items.append({
                     "task_id": int(task.id),
@@ -303,6 +294,11 @@ class InferenceService:
         data_service=None,
         personal_source_service=None,
     ):
+        if getattr(current_user, "id", None) is None:
+            raise PermissionError(
+                "Authentication is required for trained-model analysis"
+            )
+
         async with async_session_maker() as session:
             task = await session.get(ModelTrainingTask, task_id)
             if not task:
@@ -330,6 +326,120 @@ class InferenceService:
                 personal_source_service=personal_source_service,
             )
             return task, hypers, data_dirs, temp_data_root
+
+    async def _cached_prediction(
+        self,
+        task,
+        hypers,
+        data_dirs,
+        user_id,
+        mars_year,
+        ls_start,
+        horizon,
+    ):
+        async def compute():
+            return await self._predict_task_with_context(
+                task=task,
+                hypers=hypers,
+                mars_year=mars_year,
+                ls_start=ls_start,
+                horizon=horizon,
+                data_dirs=data_dirs,
+            )
+
+        return await self.analysis_cache.get_or_compute(
+            user_id=user_id,
+            task=task,
+            analysis_type="prediction",
+            request_params={
+                "mars_year": mars_year,
+                "ls_start": ls_start,
+                "horizon": horizon,
+            },
+            data_dirs=data_dirs,
+            compute=compute,
+        )
+
+    async def _cached_test_set_metrics(
+        self, task, hypers, data_dirs, user_id, horizon
+    ):
+        async def compute():
+            if getattr(task, "model_source", "official") == "uploaded":
+                return self._uploaded_task_test_set_metrics(
+                    task, hypers, horizon, data_dirs=data_dirs
+                )
+            return self._official_task_test_set_metrics(
+                task, hypers, horizon, data_dirs=data_dirs
+            )
+
+        return await self.analysis_cache.get_or_compute(
+            user_id=user_id,
+            task=task,
+            analysis_type="metrics",
+            request_params={"horizon": horizon},
+            data_dirs=data_dirs,
+            compute=compute,
+        )
+
+    async def _cached_error_distribution(
+        self, task, hypers, data_dirs, user_id, horizon
+    ):
+        async def compute():
+            if getattr(task, "model_source", "official") == "uploaded":
+                truth_raw, pred_raw, actual_horizon = (
+                    self._uploaded_task_test_set_arrays(
+                        task, hypers, horizon, data_dirs=data_dirs
+                    )
+                )
+            else:
+                truth_raw, pred_raw, actual_horizon = (
+                    self._official_task_test_set_arrays(
+                        task, hypers, horizon, data_dirs=data_dirs
+                    )
+                )
+            return compute_error_distribution(
+                truth_raw[:, :actual_horizon],
+                pred_raw[:, :actual_horizon],
+            )
+
+        return await self.analysis_cache.get_or_compute(
+            user_id=user_id,
+            task=task,
+            analysis_type="error_distribution",
+            request_params={"horizon": horizon},
+            data_dirs=data_dirs,
+            compute=compute,
+        )
+
+    async def _cached_permutation_importance(
+        self,
+        task,
+        hypers,
+        data_dirs,
+        user_id,
+        horizon,
+        selected_variables,
+    ):
+        async def compute():
+            return self._task_permutation_importance_with_context(
+                task=task,
+                hypers=hypers,
+                selected_variables=selected_variables,
+                horizon=horizon,
+                data_dirs=data_dirs,
+            )
+
+        return await self.analysis_cache.get_or_compute(
+            user_id=user_id,
+            task=task,
+            analysis_type="pfi",
+            request_params={
+                "horizon": horizon,
+                "selected_variables": selected_variables,
+            },
+            data_dirs=data_dirs,
+            compute=compute,
+        )
 
     async def _prepare_task_data_env(
         self,

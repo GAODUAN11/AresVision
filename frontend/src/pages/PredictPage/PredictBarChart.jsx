@@ -195,8 +195,6 @@ export default function PredictBarChart({
   precision,
   handleFetchPerformance,
   perfLoading = false,
-  showShapley,
-  setShowShapley,
 }) {
   const t = useT();
   const { settings } = useSettings();
@@ -213,7 +211,6 @@ export default function PredictBarChart({
     spread: isZh ? '组间差距' : 'Spread',
     spreadHint: isZh ? '最佳与末位组合之间的指标差值' : 'Metric gap between the top and bottom configuration',
     refresh: isZh ? '刷新频谱' : 'Refresh spectrum',
-    marginal: isZh ? '查看组合边际分析' : 'View marginal contribution',
     system: isZh ? '极坐标频谱' : 'Polar spectrum',
     systemHint: isZh ? '外圈更优，角度代表模型类别' : 'Outer orbit means stronger performance for the active metric',
   };
@@ -304,23 +301,6 @@ export default function PredictBarChart({
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setShowShapley({ visible: true, mode: 'marginal' })}
-            style={{
-              padding: '9px 14px',
-              borderRadius: 12,
-              border: `1px solid ${showShapley.visible && showShapley.mode === 'marginal' ? 'rgba(99,232,191,0.35)' : C.border}`,
-              background: showShapley.visible && showShapley.mode === 'marginal' ? 'rgba(99,232,191,0.1)' : C.bgMuted,
-              color: showShapley.visible && showShapley.mode === 'marginal' ? C.green : C.ice70,
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {copy.marginal}
-          </button>
-
           <MetricTabs activeMetric={activeMetric} setActiveMetric={setActiveMetric} />
 
           <button

@@ -14,7 +14,7 @@ from schemas.predict import (
     EvalMetricsResponse, AblationResponse, DiurnalResponse,
     PerformanceResponse, PerformanceCompareRequest, PerformanceCompareResponse,
     TrainingModelCompareRequest, TrainingModelCompareResponse,
-    ErrorDistributionResponse, GlobalShapResponse, PermutationImportanceResponse,
+    ErrorDistributionResponse, PermutationImportanceResponse,
 )
 from config import DEFAULT_MARS_YEAR, LATITUDE_BANDS
 from services.analysis_service import AnalysisService
@@ -38,6 +38,15 @@ def _get_training_inference_service(request: Request):
     if service is None:
         raise HTTPException(status_code=500, detail="training inference service unavailable")
     return service
+
+
+def _require_trained_model_user(current_user: User | None) -> User:
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication is required for trained-model analysis",
+        )
+    return current_user
 
 
 def _normalize_predict_source(data_source: str | None) -> str:
@@ -108,6 +117,7 @@ async def run_prediction(
     """
     try:
         if body.training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             result = await service.predict_task(
                 task_id=body.training_task_id,
@@ -177,6 +187,7 @@ async def get_eval_metrics(
     """鑾峰彇棰勬祴璇勪及鎸囨爣锛圧MSE, MAE, SSIM, R虏锛?"""
     try:
         if body.training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             metrics = await service.task_test_set_metrics(
                 task_id=body.training_task_id,
@@ -225,6 +236,7 @@ async def compare_training_models(
 ):
     """Compare completed training models using full test-set metrics."""
     try:
+        current_user = _require_trained_model_user(current_user)
         service = _get_training_inference_service(request)
         return await service.compare_task_test_set_metrics(
             task_ids=body.task_ids,
@@ -249,6 +261,7 @@ async def compare_training_model_error_distributions(
 ):
     """Compare completed training models using full test-set error distributions."""
     try:
+        current_user = _require_trained_model_user(current_user)
         service = _get_training_inference_service(request)
         return await service.compare_task_error_distributions(
             task_ids=body.task_ids,
@@ -273,6 +286,7 @@ async def compare_training_model_pfi(
 ):
     """Compare completed training models using full test-set permutation importance."""
     try:
+        current_user = _require_trained_model_user(current_user)
         service = _get_training_inference_service(request)
         return await service.compare_task_permutation_importance(
             task_ids=body.task_ids,
@@ -407,20 +421,6 @@ async def get_performance_comparison(
         raise HTTPException(status_code=500, detail=f"瀵规瘮鏁版嵁鐢熸垚澶辫触: {e}")
 
 
-@router.get("/shapley")
-async def get_shapley_values(
-    request: Request,
-    metric: str = Query("r2", description="鎬ц兘鎸囨爣 (r2, rmse, mae, ssim)"),
-):
-    """鑾峰彇鎵€鏈夋皵璞＄壒寰佺殑 Shapley 璐＄尞鍊?"""
-    try:
-        ps = _get_predict_service(request)
-        return ps.get_shapley_values(metric)
-    except Exception as e:
-        logger.error(f"Shapley璁＄畻澶辫触: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # 鈹€鈹€鈹€ 鏄煎鍙樺寲 鈹€鈹€鈹€
 
 @router.get("/diurnal", response_model=DiurnalResponse)
@@ -474,6 +474,7 @@ async def get_error_distribution(
     try:
         selected_variables = [v.strip() for v in vars.split(",") if v.strip()]
         if training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             return await service.task_error_distribution(
                 task_id=training_task_id,
@@ -498,15 +499,6 @@ async def get_error_distribution(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/shapley-global", response_model=GlobalShapResponse)
-async def get_shapley_global(request: Request):
-    """鎵ц骞惰幏鍙栧叏娴嬭瘯闆?SHAP 鍏ㄥ眬褰掑洜鍒嗘瀽缁撴灉"""
-    try:
-        ps = _get_predict_service(request)
-        return ps.get_global_shap()
-    except Exception as e:
-        logger.error(f"鍏ㄥ眬 SHAP 鍒嗘瀽澶辫触: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/permutation-importance", response_model=PermutationImportanceResponse)
 async def get_permutation_importance(
     request: Request,
@@ -521,6 +513,7 @@ async def get_permutation_importance(
     try:
         selected_variables = [v.strip() for v in vars.split(",") if v.strip()]
         if training_task_id:
+            current_user = _require_trained_model_user(current_user)
             service = _get_training_inference_service(request)
             return await service.task_permutation_importance(
                 task_id=training_task_id,

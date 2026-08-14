@@ -20,6 +20,7 @@ def install_service_import_stubs():
 
     if "sqlalchemy" not in sys.modules:
         sqlalchemy = types.ModuleType("sqlalchemy")
+        sqlalchemy.delete = lambda *args, **kwargs: None
         sqlalchemy.select = lambda *args, **kwargs: None
         sqlalchemy.update = lambda *args, **kwargs: None
         sys.modules["sqlalchemy"] = sqlalchemy
@@ -30,6 +31,7 @@ def install_service_import_stubs():
 
     models = types.ModuleType("database.models")
     models.ModelTrainingTask = object
+    models.PredictionAnalysisCache = object
     models.User = object
     sys.modules["database.models"] = models
 
@@ -44,6 +46,14 @@ def install_service_import_stubs():
     training_weight_service = types.ModuleType("services.training_weight_service")
     training_weight_service.TrainingWeightService = object
     sys.modules["services.training_weight_service"] = training_weight_service
+
+    prediction_cache_service = types.ModuleType(
+        "services.prediction_analysis_cache"
+    )
+    prediction_cache_service.PredictionAnalysisCacheService = object
+    sys.modules[
+        "services.prediction_analysis_cache"
+    ] = prediction_cache_service
 
     if "fastapi" not in sys.modules:
         fastapi = types.ModuleType("fastapi")

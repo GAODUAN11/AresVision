@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import inspect
 import json
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from config import MCD_DIR, OPENMARS_DIR
+from database.engine import async_session_maker
+from database.models import PredictionAnalysisCache
+from sqlalchemy import select, update
 
 
 CACHE_SCHEMA_VERSION = 1
@@ -175,3 +181,151 @@ def decode_payload(
     if envelope.get("analysis_type") != analysis_type:
         raise CachePayloadError("Cache analysis type mismatch")
     return _validate_result(analysis_type, envelope.get("payload"))
+
+
+class PredictionAnalysisCacheService:
+    def __init__(
+        self,
+        sessionmaker=async_session_maker,
+        *,
+        lease_seconds=1800.0,
+        poll_seconds=0.05,
+    ):
+        self.sessionmaker = sessionmaker
+        self.lease_seconds = float(lease_seconds)
+        self.poll_seconds = float(poll_seconds)
+
+    async def get_or_compute(
+        self,
+        *,
+        user_id: int,
+        task,
+        analysis_type: str,
+        request_params: dict[str, Any],
+        data_dirs: dict[str, str] | None,
+        compute,
+    ) -> dict[str, Any]:
+        if not user_id:
+            raise PermissionError(
+                "Authentication is required for trained-model analysis"
+            )
+
+        request_hash = build_request_hash(
+            analysis_type, request_params
+        )
+        fingerprint = build_artifact_fingerprint(task, data_dirs)
+        ready = await self._read_ready(
+            int(user_id),
+            int(task.id),
+            analysis_type,
+            request_hash,
+            fingerprint,
+        )
+        if ready is not None:
+            return ready
+
+        token = await self._insert_or_claim(
+            int(user_id),
+            int(task.id),
+            analysis_type,
+            request_hash,
+            fingerprint,
+        )
+        result = compute()
+        if inspect.isawaitable(result):
+            result = await result
+        await self._publish(token, encode_payload(analysis_type, result))
+        return result
+
+    async def _read_ready(
+        self,
+        user_id,
+        task_id,
+        analysis_type,
+        request_hash,
+        fingerprint,
+    ):
+        async with self.sessionmaker() as session:
+            row = (
+                await session.execute(
+                    select(PredictionAnalysisCache).where(
+                        PredictionAnalysisCache.user_id == user_id,
+                        PredictionAnalysisCache.training_task_id == task_id,
+                        PredictionAnalysisCache.analysis_type == analysis_type,
+                        PredictionAnalysisCache.request_hash == request_hash,
+                        PredictionAnalysisCache.artifact_fingerprint
+                        == fingerprint,
+                        PredictionAnalysisCache.status == "ready",
+                    )
+                )
+            ).scalar_one_or_none()
+
+        if row is None or row.payload is None:
+            return None
+        return decode_payload(analysis_type, row.payload)
+
+    async def _insert_or_claim(
+        self,
+        user_id,
+        task_id,
+        analysis_type,
+        request_hash,
+        fingerprint,
+    ):
+        token = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        async with self.sessionmaker() as session:
+            row = (
+                await session.execute(
+                    select(PredictionAnalysisCache).where(
+                        PredictionAnalysisCache.user_id == user_id,
+                        PredictionAnalysisCache.training_task_id == task_id,
+                        PredictionAnalysisCache.analysis_type == analysis_type,
+                        PredictionAnalysisCache.request_hash == request_hash,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = PredictionAnalysisCache(
+                    user_id=user_id,
+                    training_task_id=task_id,
+                    analysis_type=analysis_type,
+                    request_hash=request_hash,
+                    artifact_fingerprint=fingerprint,
+                )
+                session.add(row)
+
+            row.artifact_fingerprint = fingerprint
+            row.status = "computing"
+            row.payload = None
+            row.lease_token = token
+            row.lease_expires_at = now + timedelta(
+                seconds=self.lease_seconds
+            )
+            row.last_error = None
+            await session.commit()
+        return token
+
+    async def _publish(self, token, payload):
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                update(PredictionAnalysisCache)
+                .where(
+                    PredictionAnalysisCache.lease_token == token,
+                    PredictionAnalysisCache.status == "computing",
+                )
+                .values(
+                    status="ready",
+                    payload=payload,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    last_error=None,
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+            if result.rowcount != 1:
+                await session.rollback()
+                raise RuntimeError(
+                    "Prediction analysis cache lease was lost"
+                )
+            await session.commit()

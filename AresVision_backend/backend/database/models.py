@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey,
-    Integer, String, Text,
+    Integer, LargeBinary, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -275,6 +275,67 @@ class ModelTrainingTask(Base):
 
     def __repr__(self) -> str:
         return f"<ModelTrainingTask id={self.id} script={self.model_script} status={self.status}>"
+
+
+class PredictionAnalysisCache(Base):
+    __tablename__ = "prediction_analysis_caches"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "training_task_id",
+            "analysis_type",
+            "request_hash",
+            name="uq_prediction_analysis_cache_scope",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
+    training_task_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("model_training_tasks.id"),
+        nullable=False,
+        index=True,
+    )
+    analysis_type: Mapped[str] = mapped_column(
+        String(40), nullable=False
+    )
+    request_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
+    artifact_fingerprint: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="computing"
+    )
+    payload: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True
+    )
+    lease_token: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=_now, onupdate=_now
+    )
+
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    training_task: Mapped["ModelTrainingTask"] = relationship(
+        "ModelTrainingTask", foreign_keys=[training_task_id]
+    )
 
 
 class PersonalSourceBuildState(Base):

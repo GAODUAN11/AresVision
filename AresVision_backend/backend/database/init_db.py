@@ -19,6 +19,7 @@ from database.models import (
     UserModelPackage,
     TrainingWeightFile,
     ModelTrainingTask,
+    PredictionAnalysisCache,
     DatasetLineageEvent,
     DatasetQualitySnapshot,
 )  # noqa: F401

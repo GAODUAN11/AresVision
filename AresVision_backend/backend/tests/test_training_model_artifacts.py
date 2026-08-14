@@ -5,6 +5,7 @@ import types
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -85,6 +86,16 @@ class _SuccessfulProcess:
 
     def wait(self):
         return 0
+
+
+class _FailedProcess:
+    pid = 9876
+
+    def __init__(self, lines):
+        self.stdout = _EmptyStdout(lines)
+
+    def wait(self):
+        return 1
 
 
 class _TaskSession:
@@ -234,6 +245,90 @@ def test_invalid_artifact_final_state_wins_over_queued_progress_update(monkeypat
 
     assert task.status == "failed"
     assert task.progress < 100.0
+
+
+def _run_failed_training(monkeypatch, tmp_path, log_lines, notification_side_effect=None):
+    output_path = tmp_path / "failed.pth"
+    log_file = tmp_path / "failed.log"
+    task = SimpleNamespace(
+        id=23,
+        user_id=5,
+        custom_model_name="OOM model",
+        status="pending",
+        total_epochs=0,
+        pid=None,
+        loss_history=None,
+        progress=0.0,
+        end_time=None,
+        metrics=None,
+    )
+    broadcaster = _BroadcastRecorder()
+    monkeypatch.setattr(training_module, "async_session_maker", lambda: _TaskSession(task))
+    monkeypatch.setattr(
+        training_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: _FailedProcess(log_lines),
+    )
+    notification_writer = AsyncMock(
+        side_effect=notification_side_effect,
+        return_value=True,
+    )
+    monkeypatch.setattr(
+        training_module,
+        "ensure_cuda_oom_notification",
+        notification_writer,
+    )
+    from services import ws_manager
+
+    monkeypatch.setattr(ws_manager, "manager", broadcaster)
+
+    asyncio.run(
+        training_module.TrainingService()._run_training_subprocess(
+            task_id=task.id,
+            script_name="demo3.py",
+            hyperparameters={"epochs": 2},
+            log_file=log_file,
+            output_path=output_path,
+        )
+    )
+    return task, broadcaster, notification_writer
+
+
+def test_cuda_oom_failure_records_metrics_and_notification(monkeypatch, tmp_path):
+    task, broadcaster, notification_writer = _run_failed_training(
+        monkeypatch,
+        tmp_path,
+        ["torch.OutOfMemoryError: CUDA out of memory\n"],
+    )
+
+    assert task.status == "failed"
+    assert json.loads(task.metrics)["error_code"] == "cuda_out_of_memory"
+    notification_writer.assert_awaited_once()
+    assert broadcaster.messages[-1][1]["status"] == "failed"
+
+
+def test_ordinary_subprocess_failure_does_not_create_oom_notification(monkeypatch, tmp_path):
+    task, _broadcaster, notification_writer = _run_failed_training(
+        monkeypatch,
+        tmp_path,
+        ["ValueError: invalid training data\n"],
+    )
+
+    assert task.status == "failed"
+    notification_writer.assert_not_awaited()
+
+
+def test_notification_write_failure_does_not_block_terminal_task_state(monkeypatch, tmp_path):
+    task, broadcaster, notification_writer = _run_failed_training(
+        monkeypatch,
+        tmp_path,
+        ["CUDA out of memory\n"],
+        notification_side_effect=RuntimeError("notification database unavailable"),
+    )
+
+    assert task.status == "failed"
+    notification_writer.assert_awaited_once()
+    assert broadcaster.messages[-1][1]["status"] == "failed"
 
 
 def _task_response_payload(output_model_path):

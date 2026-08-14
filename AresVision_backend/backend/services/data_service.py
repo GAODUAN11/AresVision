@@ -15,6 +15,7 @@ from config import (
     SUPPORTED_MARS_YEARS,
 )
 from core.data_align import interpolate_mcd_to_openmars
+from services.mcd_file_locator import find_mcd_files
 
 logger = logging.getLogger("aresvision.data.service")
 
@@ -90,12 +91,7 @@ class DataService:
             ds.close()
 
     def _load_mcd(self, mars_year: int):
-        pattern = str(MCD_DIR / f"*my{mars_year}*.nc")
-        files = sorted(glob.glob(pattern))
-
-        if not files:
-            pattern = str(MCD_DIR / "*.nc")
-            files = sorted(glob.glob(pattern))
+        files = find_mcd_files(MCD_DIR, mars_year)
 
         if not files:
             logger.warning(f"未找到 MCD 数据文件: {MCD_DIR}")

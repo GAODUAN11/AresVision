@@ -29,3 +29,11 @@ def test_resolve_mcd_dir_returns_canonical_path_when_data_is_missing(tmp_path: P
     data_dir = tmp_path / "missing-data"
 
     assert resolve_mcd_dir(data_dir, None) == data_dir / "mcd"
+
+
+def test_gitignore_covers_both_mcd_directory_spellings():
+    repo_root = Path(__file__).resolve().parents[3]
+    rules = (repo_root / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert "AresVision_backend/backend/data/mcd/" in rules
+    assert "AresVision_backend/backend/data/MCD/" in rules

@@ -27,6 +27,21 @@ def install_service_import_stubs():
     models.ModelTrainingTask = object
     sys.modules["database.models"] = models
 
+    metrics = types.ModuleType("core.metrics")
+    metrics.compute_error_distribution = lambda *args, **kwargs: {}
+    metrics.compute_metrics = lambda *args, **kwargs: {
+        "overall": {"step": 0},
+        "per_step": [],
+    }
+    metrics.compute_test_set_metrics = lambda truth, pred, horizon=None: {
+        "overall": {"step": 0},
+        "per_step": [
+            {"step": step + 1}
+            for step in range(int(horizon or truth.shape[1]))
+        ],
+    }
+    sys.modules["core.metrics"] = metrics
+
 
 def load_inference_module():
     install_service_import_stubs()
@@ -81,6 +96,16 @@ def stub_prediction_data():
         dtype=torch.float32,
     )
     return x_torch, y_torch, ls_torch, 5.0, 2.0
+
+
+def test_inference_service_uses_central_mcd_directory(tmp_path, monkeypatch):
+    inference_module = load_inference_module()
+    expected = tmp_path / "mcd"
+    monkeypatch.setattr(inference_module, "MCD_DIR", expected)
+
+    service = inference_module.InferenceService()
+
+    assert service.mcd_dir == expected
 
 
 def test_predict_task_supports_legacy_official_weights(tmp_path):

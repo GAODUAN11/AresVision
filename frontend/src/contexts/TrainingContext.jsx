@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { fetchTasks, fetchLogs } from '../services/api';
 import { useAuth } from './AuthContext';
+import { reconcileActiveTrainingTaskId } from './trainingTaskSelection';
 
 const TrainingContext = createContext();
 
@@ -44,17 +45,13 @@ export const TrainingProvider = ({ children, enabled = true }) => {
     try {
       const data = await fetchTasks();
       setTasks(data);
-
-      if (!activeTaskId) {
-        const runningTask = data.find((tk) => tk.status === 'running' || tk.status === 'pending');
-        if (runningTask) {
-          setActiveTaskId(runningTask.id);
-        }
-      }
+      setActiveTaskId((currentTaskId) => (
+        reconcileActiveTrainingTaskId(data, currentTaskId)
+      ));
     } catch (err) {
       console.error('Failed to load tasks', err);
     }
-  }, [enabled, user, activeTaskId]);
+  }, [enabled, user]);
 
   useEffect(() => {
     loadTasksRef.current = loadTasks;

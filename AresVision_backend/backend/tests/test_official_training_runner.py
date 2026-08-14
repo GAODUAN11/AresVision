@@ -30,6 +30,32 @@ class TinyOfficialModel(nn.Module):
         self.forecast_head = nn.Linear(4, 1)
 
 
+def test_official_runner_uses_central_mcd_directory(tmp_path, monkeypatch):
+    demo3 = load_demo3_module()
+    expected_mcd_dir = tmp_path / "resolved-mcd"
+    captured = {}
+
+    class PreparationObserved(Exception):
+        pass
+
+    def capture_training_data(**kwargs):
+        captured.update(kwargs)
+        raise PreparationObserved
+
+    monkeypatch.setattr(demo3, "MCD_DIR", expected_mcd_dir)
+    monkeypatch.setattr(demo3, "_prepare_training_data", capture_training_data)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(SCRIPT_PATH), "--output_path", str(tmp_path / "model.pth")],
+    )
+
+    with pytest.raises(PreparationObserved):
+        demo3.main()
+
+    assert captured["mcd_dir"] == expected_mcd_dir
+
+
 def test_official_runner_strictly_loads_transfer_weights_and_freezes_backbone(tmp_path, monkeypatch):
     demo3 = load_demo3_module()
     source_model = TinyOfficialModel()

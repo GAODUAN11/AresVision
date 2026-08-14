@@ -8,6 +8,7 @@ import re
 import netCDF4 as nc
 from pathlib import Path
 
+from config import MCD_DIR
 from database.models import ModelTrainingTask
 from database.engine import async_session_maker
 from core.metrics import compute_error_distribution, compute_metrics, compute_test_set_metrics
@@ -31,7 +32,7 @@ class InferenceService:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.base_dir = Path(__file__).parent.parent
         self.openmars_dir = self.base_dir / "data" / "openmars"
-        self.mcd_dir = self.base_dir / "data" / "MCD"
+        self.mcd_dir = Path(MCD_DIR)
 
     def _load_task_state_dict(self, task):
         model_path = getattr(task, "output_model_path", None)

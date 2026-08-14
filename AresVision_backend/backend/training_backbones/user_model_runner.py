@@ -23,6 +23,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from config import MCD_DIR
 from services.transfer_learning_strategy import apply_freeze_strategy
 
 CHANNEL_ORDER = ["U", "V", "D", "S", "T"]
@@ -522,7 +523,7 @@ def main() -> None:
     selected_channels = parse_selected_channels(args.selected_channels)
     training_dataset = normalize_training_dataset(args.training_dataset)
     openmars_dir = Path(os.environ.get("ARESVISION_OPENMARS_DIR", str(BACKEND_DIR / "data" / "openmars")))
-    mcd_dir = Path(os.environ.get("ARESVISION_MCD_DIR", str(BACKEND_DIR / "data" / "MCD")))
+    mcd_dir = Path(MCD_DIR)
     mcd_overview_dir = Path(os.environ.get("ARESVISION_MCD_OVERVIEW_DIR", str(BACKEND_DIR / "data" / "mcd_overview")))
     x_torch, y_torch, y_mean, y_std, height, width = prepare_tensors(
         openmars_dir,

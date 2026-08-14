@@ -6,6 +6,7 @@ from pathlib import Path
 
 import netCDF4
 import numpy as np
+import pytest
 import torch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -47,6 +48,7 @@ sys.modules["sklearn"] = sklearn_module
 sys.modules["sklearn.metrics"] = sklearn_metrics
 sys.modules["sklearn.preprocessing"] = sklearn_preprocessing
 
+from training_backbones import user_model_runner as runner_module  # noqa: E402
 from training_backbones.user_model_runner import (  # noqa: E402
     assert_prediction_shape,
     build_uploaded_model_config,
@@ -78,6 +80,37 @@ class BadShapeTiny(nn.Module):
 def build_model(config):
     return BadShapeTiny()
 """
+
+
+def test_uploaded_runner_uses_central_mcd_directory(tmp_path, monkeypatch):
+    expected = tmp_path / "mcd"
+    captured = {}
+
+    class PreparationObserved(Exception):
+        pass
+
+    def capture_prepare_tensors(openmars_dir, mcd_dir, *args, **kwargs):
+        captured["mcd_dir"] = mcd_dir
+        raise PreparationObserved
+
+    monkeypatch.setattr(runner_module, "MCD_DIR", expected)
+    monkeypatch.setattr(runner_module, "prepare_tensors", capture_prepare_tensors)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(runner_module.__file__),
+            "--output_path",
+            str(tmp_path / "output.pth"),
+            "--uploaded_model_path",
+            str(tmp_path / "uploaded.py"),
+        ],
+    )
+
+    with pytest.raises(PreparationObserved):
+        runner_module.main()
+
+    assert captured["mcd_dir"] == expected
 
 
 def _write_overview_file(path: Path, offset: float) -> None:

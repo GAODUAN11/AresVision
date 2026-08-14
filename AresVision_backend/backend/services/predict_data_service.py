@@ -11,6 +11,7 @@ import netCDF4 as nc
 from scipy.interpolate import interp1d
 import torch # Added torch import
 from config import OPENMARS_DIR, MCD_DIR, MCD_VARIABLES, TRAINING_MASTER_ORDER, N_LAT, N_LON
+from services.mcd_file_locator import find_mcd_files
 
 logger = logging.getLogger("aresvision.predict.data")
 
@@ -295,8 +296,7 @@ class PredictDataService:
                     out[v] = np.zeros((len(ls), N_LAT, N_LON), dtype=np.float32)
             return out, ls
 
-        pattern = str(MCD_DIR / f"*my{mars_year}*.nc")
-        files = sorted(glob.glob(pattern))
+        files = find_mcd_files(MCD_DIR, mars_year)
         if not files: raise FileNotFoundError(f"Missing MCD data for MY{mars_year}")
 
         mcd_data = {v: [] for v in MCD_VARIABLES}

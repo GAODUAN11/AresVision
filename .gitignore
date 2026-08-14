@@ -43,6 +43,7 @@ AresVision_backend/backend/.env
 AresVision_backend/backend/data/approved/
 AresVision_backend/backend/data/aresvision.db
 AresVision_backend/backend/data/mcd/
+AresVision_backend/backend/data/MCD/
 AresVision_backend/backend/data/mcd_overview/
 AresVision_backend/backend/data/nomad/
 AresVision_backend/backend/data/openmars/

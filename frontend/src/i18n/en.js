@@ -994,6 +994,8 @@ const en = {
       pooling_sizes: 'POOLING SIZES',
       downsample_factors: 'DOWNSAMPLE FACTORS',
       dropout: 'DROPOUT',
+      booleanEnabled: 'On',
+      booleanDisabled: 'Off',
       disabled: 'Disabled',
     }
   },

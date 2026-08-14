@@ -49,6 +49,7 @@ import {
   getModelTrainingControlVisibility,
   getVisibleTrainingHyperparameters,
 } from './ModelTrainingPage/modelTrainingVisibility';
+import { formatBooleanHyperparameterValue } from './ModelTrainingPage/trainingHyperparameterFormatting';
 import {
   TRAINING_TASK_HANDOFF_KEY,
   buildTrainingTaskHandoff,
@@ -148,6 +149,7 @@ function formatHyperValue(key, value, t) {
   if (key === 'model_architecture') return getModelArchitectureLabel(value);
   if (key === 'learning_rate' && typeof value === 'number') return value.toFixed(5);
   if (key === 'early_stopping_patience' && value === 0) return t('modelTraining.hypers.disabled');
+  if (typeof value === 'boolean') return formatBooleanHyperparameterValue(value, t);
   return value ?? '--';
 }
 

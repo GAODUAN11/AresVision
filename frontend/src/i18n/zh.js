@@ -1047,6 +1047,8 @@ const zh = {
       pooling_sizes: '池化尺寸',
       downsample_factors: '下采样因子',
       dropout: 'Dropout',
+      booleanEnabled: '开启',
+      booleanDisabled: '关闭',
       disabled: '已禁用',
     }
   },

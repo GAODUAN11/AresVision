@@ -19,6 +19,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from config import MCD_DIR  # noqa: E402
 from services.training_channels import (  # noqa: E402
     ARCHITECTURE_FLOAT_PARAMS,
     ARCHITECTURE_INTEGER_LIST_PARAMS,
@@ -631,7 +632,7 @@ def main() -> None:
     openmars_dir = Path(
         os.environ.get("ARESVISION_OPENMARS_DIR", str(BACKEND_DIR / "data" / "openmars"))
     )
-    mcd_dir = Path(os.environ.get("ARESVISION_MCD_DIR", str(BACKEND_DIR / "data" / "MCD")))
+    mcd_dir = Path(MCD_DIR)
     overview_dir = Path(
         os.environ.get(
             "ARESVISION_MCD_OVERVIEW_DIR",

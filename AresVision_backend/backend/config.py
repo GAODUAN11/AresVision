@@ -4,6 +4,7 @@ AresVision 后端配置常量
 
 import os
 from pathlib import Path
+from typing import Optional, Union
 from dotenv import load_dotenv
 
 # 加载 .env 文件中的环境变量
@@ -13,7 +14,28 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 OPENMARS_DIR = DATA_DIR / "openmars"
-MCD_DIR = DATA_DIR / "mcd"
+
+
+def resolve_mcd_dir(
+    data_dir: Path,
+    configured_path: Optional[Union[str, os.PathLike]],
+) -> Path:
+    if configured_path and str(configured_path).strip():
+        return Path(configured_path)
+
+    try:
+        directories = {
+            child.name: child
+            for child in data_dir.iterdir()
+            if child.is_dir()
+        }
+    except OSError:
+        directories = {}
+
+    return directories.get("mcd") or directories.get("MCD") or data_dir / "mcd"
+
+
+MCD_DIR = resolve_mcd_dir(DATA_DIR, os.getenv("ARESVISION_MCD_DIR"))
 MCD_OVERVIEW_DIR = DATA_DIR / "mcd_overview"
 MCD_RAW_3H_DIR = Path(os.getenv(
     "MCD_RAW_3H_DIR",

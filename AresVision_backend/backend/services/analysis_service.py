@@ -4,6 +4,7 @@
 """
 import logging
 import warnings
+from threading import RLock
 import numpy as np
 
 from config import MAX_LS_POINTS, LATITUDE_BANDS, MCD_VARIABLES
@@ -17,6 +18,7 @@ class AnalysisService:
         self.data_service = data_service
         self.mcd_variables = list(mcd_variables or MCD_VARIABLES)
         self._cache: dict[str, dict] = {}
+        self._cache_lock = RLock()
 
     def get_globe_data(self, mars_year: int, ls: float, variable: str = "o3col") -> dict:
         om = self.data_service.get_openmars_data(mars_year)
@@ -142,8 +144,10 @@ class AnalysisService:
 
     def get_seasonal_heatmap(self, mars_year: int, variable: str = "o3col") -> dict:
         cache_key = f"heatmap_{mars_year}_{variable}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         if variable == "o3col":
             om = self.data_service.get_openmars_data(mars_year)
@@ -177,13 +181,16 @@ class AnalysisService:
             "max": max_val,
             "variable": variable,
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_seasonal_bands(self, mars_year: int) -> dict:
         cache_key = f"bands_{mars_year}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         om = self.data_service.get_openmars_data(mars_year)
         o3 = om["o3col"]
@@ -208,7 +215,8 @@ class AnalysisService:
             "ls": [float(v) for v in ls_ds],
             "bands": bands,
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_env_variable_heatmap(self, mars_year: int, variable_name: str) -> dict:
@@ -216,8 +224,10 @@ class AnalysisService:
 
     def get_correlation_matrix(self, mars_year: int) -> dict:
         cache_key = f"corr_{mars_year}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         om = self.data_service.get_openmars_data(mars_year)
         am = self.data_service.get_aligned_mcd_data(mars_year)
@@ -255,7 +265,8 @@ class AnalysisService:
             "matrix": self._to_nested_list(corr),
             "variable_names": var_names,
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_diurnal_data(self, mars_year: int, ls: float, lat_band_name: str) -> dict:
@@ -351,8 +362,10 @@ class AnalysisService:
 
     def get_coupling_data(self, mars_year: int, var1: str, var2: str) -> dict:
         cache_key = f"coupling_{mars_year}_{var1}_{var2}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         om = self.data_service.get_openmars_data(mars_year)
         am = self.data_service.get_aligned_mcd_data(mars_year)
@@ -380,13 +393,16 @@ class AnalysisService:
             "var1_name": var1,
             "var2_name": var2
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_zonal_anomalies(self, mars_year: int, variable: str = "o3col") -> dict:
         cache_key = f"zonal_anomaly_{mars_year}_{variable}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         if variable == "o3col":
             data = self.data_service.get_openmars_data(mars_year)
@@ -430,13 +446,16 @@ class AnalysisService:
         }
         # Plotly heatmap expects z rows to follow y (latitude), columns to follow x (longitude).
         result["z"] = self._to_nested_list(anomaly_ordered)
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_solar_photochemical(self, mars_year: int, lat_band_name: str) -> dict:
         cache_key = f"solar_photo_{mars_year}_{lat_band_name}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         om = self.data_service.get_openmars_data(mars_year)
         am = self.data_service.get_aligned_mcd_data(mars_year)
@@ -463,13 +482,16 @@ class AnalysisService:
             "ls": [float(v) for v in om["ls"][::step]],
             "lat_band": band_def["name"]
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_polar_dynamics(self, mars_year: int) -> dict:
         cache_key = f"polar_dyn_{mars_year}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         om = self.data_service.get_openmars_data(mars_year)
         am = self.data_service.get_aligned_mcd_data(mars_year)
@@ -512,13 +534,16 @@ class AnalysisService:
                 "temp": [float(v) for v in temp_s[::step]],
             }
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_research_suite(self, mars_year: int) -> dict:
         cache_key = f"research_suite_{mars_year}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         om = self.data_service.get_openmars_data(mars_year)
         am = self.data_service.get_aligned_mcd_data(mars_year)
@@ -624,13 +649,16 @@ class AnalysisService:
                 "peak_to_peak": wave_span,
             },
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     def get_phase_space(self, mars_year: int, driver: str = "Dust_Optical_Depth") -> dict:
         cache_key = f"phase_space_{mars_year}_{driver}"
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         if driver not in self.mcd_variables:
             raise ValueError(f"变量 {driver} 不可用")
@@ -671,7 +699,8 @@ class AnalysisService:
                 "intercept": float(intercept) if np.isfinite(intercept) else float("nan"),
             },
         }
-        self._cache[cache_key] = result
+        with self._cache_lock:
+            self._cache[cache_key] = result
         return result
 
     @staticmethod

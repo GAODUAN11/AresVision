@@ -208,8 +208,16 @@ class PredictTransforms:
 
         return result
 
-    def postprocess_output(self, pred_scaled: np.ndarray) -> np.ndarray:
+    def postprocess_output(
+        self,
+        pred_scaled: np.ndarray,
+        *,
+        y_mean: float | None = None,
+        y_std: float | None = None,
+    ) -> np.ndarray:
         """
         同步 demo3.py L407: y_pred_phys = preds * y_std + y_mean
         """
-        return pred_scaled * self.y_std + self.y_mean
+        return pred_scaled * (self.y_std if y_std is None else y_std) + (
+            self.y_mean if y_mean is None else y_mean
+        )

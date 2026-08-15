@@ -3,6 +3,7 @@ Data overview / exploration routes.
 """
 
 import logging
+import asyncio
 
 from cachetools import LRUCache
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -278,7 +279,7 @@ async def get_overview_globe_data(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_globe_data(resolved_year, ls, variable=variable)
+        result = await asyncio.to_thread(service.get_globe_data, resolved_year, ls, variable=variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -304,7 +305,7 @@ async def get_overview_point_probe(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_point_probe(resolved_year, lat, lng, ls, variable=variable)
+        result = await asyncio.to_thread(service.get_point_probe, resolved_year, lat, lng, ls, variable=variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -326,7 +327,7 @@ async def get_overview_seasonal_heatmap(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_seasonal_heatmap(resolved_year, variable="o3col")
+        result = await asyncio.to_thread(service.get_seasonal_heatmap, resolved_year, variable="o3col")
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -346,7 +347,7 @@ async def get_overview_env_variable_heatmap(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_env_variable_heatmap(resolved_year, variable)
+        result = await asyncio.to_thread(service.get_env_variable_heatmap, resolved_year, variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -364,7 +365,7 @@ async def get_overview_correlation_matrix(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_correlation_matrix(resolved_year)
+        result = await asyncio.to_thread(service.get_correlation_matrix, resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -405,7 +406,7 @@ async def get_overview_coupling(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_coupling_data(resolved_year, var1, var2)
+        result = await asyncio.to_thread(service.get_coupling_data, resolved_year, var1, var2)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -425,7 +426,7 @@ async def get_overview_zonal_anomaly(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_zonal_anomalies(resolved_year, variable)
+        result = await asyncio.to_thread(service.get_zonal_anomalies, resolved_year, variable)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -444,7 +445,7 @@ async def get_overview_solar_photochemical(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_solar_photochemical(resolved_year, lat_band)
+        result = await asyncio.to_thread(service.get_solar_photochemical, resolved_year, lat_band)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -462,7 +463,7 @@ async def get_overview_polar_dynamics(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_polar_dynamics(resolved_year)
+        result = await asyncio.to_thread(service.get_polar_dynamics, resolved_year)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -480,7 +481,7 @@ async def get_overview_research_suite(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_research_suite(resolved_year)
+        result = await asyncio.to_thread(service.get_research_suite, resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -502,7 +503,7 @@ async def get_overview_phase_space(
         service, source_meta, resolved_year = await _resolve_overview_context(
             request, my, data_source, current_user, mcd_upload_id
         )
-        result = service.get_phase_space(resolved_year, driver)
+        result = await asyncio.to_thread(service.get_phase_space, resolved_year, driver)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -585,7 +586,7 @@ async def get_globe_data(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_globe_data(resolved_year, ls, variable=variable)
+        result = await asyncio.to_thread(service.get_globe_data, resolved_year, ls, variable=variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -606,7 +607,7 @@ async def get_seasonal_heatmap(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_seasonal_heatmap(resolved_year, variable="o3col")
+        result = await asyncio.to_thread(service.get_seasonal_heatmap, resolved_year, variable="o3col")
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -623,7 +624,7 @@ async def get_seasonal_bands(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_seasonal_bands(resolved_year)
+        result = await asyncio.to_thread(service.get_seasonal_bands, resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -641,7 +642,7 @@ async def get_env_variable_heatmap(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_env_variable_heatmap(resolved_year, variable)
+        result = await asyncio.to_thread(service.get_env_variable_heatmap, resolved_year, variable)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -658,7 +659,7 @@ async def get_correlation_matrix(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_correlation_matrix(resolved_year)
+        result = await asyncio.to_thread(service.get_correlation_matrix, resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -704,7 +705,7 @@ async def get_coupling(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_coupling_data(resolved_year, var1, var2)
+        result = await asyncio.to_thread(service.get_coupling_data, resolved_year, var1, var2)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -722,7 +723,7 @@ async def get_zonal_anomaly(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_zonal_anomalies(resolved_year, variable)
+        result = await asyncio.to_thread(service.get_zonal_anomalies, resolved_year, variable)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -740,7 +741,7 @@ async def get_solar_photochemical(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_solar_photochemical(resolved_year, lat_band)
+        result = await asyncio.to_thread(service.get_solar_photochemical, resolved_year, lat_band)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -757,7 +758,7 @@ async def get_polar_dynamics(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_polar_dynamics(resolved_year)
+        result = await asyncio.to_thread(service.get_polar_dynamics, resolved_year)
         return _with_source_meta(result, source_meta)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -774,7 +775,7 @@ async def get_research_suite(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_research_suite(resolved_year)
+        result = await asyncio.to_thread(service.get_research_suite, resolved_year)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -794,7 +795,7 @@ async def get_phase_space(
         service, source_meta, resolved_year = await _resolve_analysis_context(
             request, my, data_source, current_user
         )
-        result = service.get_phase_space(resolved_year, driver)
+        result = await asyncio.to_thread(service.get_phase_space, resolved_year, driver)
         return _with_source_meta(result, source_meta)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

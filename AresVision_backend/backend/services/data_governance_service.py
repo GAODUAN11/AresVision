@@ -7,11 +7,13 @@ Data governance service:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections import Counter
 from pathlib import Path
 from typing import Optional
+from threading import RLock
 
 import numpy as np
 import xarray as xr
@@ -67,6 +69,8 @@ class DataGovernanceService:
     def __init__(self) -> None:
         self._meta_cache: LRUCache = LRUCache(maxsize=256)
         self._quality_cache: LRUCache = LRUCache(maxsize=256)
+        self._meta_cache_lock = RLock()
+        self._quality_cache_lock = RLock()
 
     async def get_overview(self, scope: str, current_user: User) -> dict:
         if scope not in ("mine", "all"):
@@ -90,7 +94,10 @@ class DataGovernanceService:
 
             file_meta = self._resolve_record_file(record)
             path = file_meta["path"]
-            meta = self._get_dataset_meta(record, path) if path else self._empty_meta(record)
+            if path:
+                meta = await asyncio.to_thread(self._get_dataset_meta, record, path)
+            else:
+                meta = self._empty_meta(record)
 
             quality_score = None
             if path:
@@ -163,7 +170,7 @@ class DataGovernanceService:
         if file_meta["path"] is None:
             raise FileNotFoundError("dataset file not found")
 
-        meta = self._get_dataset_meta(record, file_meta["path"])
+        meta = await asyncio.to_thread(self._get_dataset_meta, record, file_meta["path"])
         quality = await self._get_quality_metrics_cached(record, file_meta["path"], meta)
 
         return {
@@ -228,12 +235,13 @@ class DataGovernanceService:
         file_meta = self._resolve_record_file(record)
         if file_meta["path"] is None:
             return
-        meta = self._get_dataset_meta(record, file_meta["path"])
+        meta = await asyncio.to_thread(self._get_dataset_meta, record, file_meta["path"])
         await self._get_quality_metrics_cached(record, file_meta["path"], meta)
 
     async def _get_quality_metrics_cached(self, record: UploadRecord, file_path: Path, meta: dict) -> dict:
         key = self._cache_key(record, file_path, "quality")
-        cached = self._quality_cache.get(key)
+        with self._quality_cache_lock:
+            cached = self._quality_cache.get(key)
         if cached is not None:
             return cached
 
@@ -242,11 +250,13 @@ class DataGovernanceService:
 
         snapshot = await self._load_quality_snapshot(record.id, file_hash, file_mtime_ns)
         if snapshot is not None:
-            self._quality_cache[key] = snapshot
+            with self._quality_cache_lock:
+                self._quality_cache[key] = snapshot
             return snapshot
 
-        quality = self._get_quality_metrics(record, file_path, meta)
-        self._quality_cache[key] = quality
+        quality = await asyncio.to_thread(self._get_quality_metrics, record, file_path, meta)
+        with self._quality_cache_lock:
+            self._quality_cache[key] = quality
         await self._save_quality_snapshot(record.id, file_hash, file_mtime_ns, quality)
         return quality
 
@@ -573,7 +583,8 @@ class DataGovernanceService:
 
     def _get_dataset_meta(self, record: UploadRecord, file_path: Path) -> dict:
         key = self._cache_key(record, file_path, "meta")
-        cached = self._meta_cache.get(key)
+        with self._meta_cache_lock:
+            cached = self._meta_cache.get(key)
         if cached is not None:
             return cached
 
@@ -581,7 +592,8 @@ class DataGovernanceService:
             normalized = self._try_normalize_overview_record(record, ds)
             if normalized is not None:
                 meta = self._meta_from_normalized_overview(record, normalized)
-                self._meta_cache[key] = meta
+                with self._meta_cache_lock:
+                    self._meta_cache[key] = meta
                 return meta
 
             variables = sorted(list(ds.data_vars))
@@ -616,7 +628,8 @@ class DataGovernanceService:
                 "ls_name": ls_name,
             }
 
-        self._meta_cache[key] = meta
+        with self._meta_cache_lock:
+            self._meta_cache[key] = meta
         return meta
 
     @staticmethod
@@ -681,7 +694,8 @@ class DataGovernanceService:
 
     def _get_quality_metrics(self, record: UploadRecord, file_path: Path, meta: dict) -> dict:
         key = self._cache_key(record, file_path, "quality")
-        cached = self._quality_cache.get(key)
+        with self._quality_cache_lock:
+            cached = self._quality_cache.get(key)
         if cached is not None:
             return cached
 
@@ -785,5 +799,6 @@ class DataGovernanceService:
             "issues": issues,
         }
 
-        self._quality_cache[key] = result
+        with self._quality_cache_lock:
+            self._quality_cache[key] = result
         return result

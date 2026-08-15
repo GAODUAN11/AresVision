@@ -22,7 +22,6 @@ import { useToast } from '../../../contexts/ToastContext';
 import {
   fetchErrorDistribution,
   fetchPermutationImportance,
-  fetchPredictMetrics,
   runPrediction,
 } from '../../../services/api';
 import { resolvePredictCacheScope, setPredictCache } from '../../../stores/predictCache';
@@ -351,20 +350,12 @@ function WorkflowCanvasInner({ initialGraph, initialConfig }) {
     markOutputs('running', compiled.enabledOutputs);
 
     try {
-      const needsMetrics = compiled.enabledOutputs.includes(WORKFLOW_OUTPUTS.METRICS);
-      const [predResult, metricsResult] = await Promise.all([
-        runPrediction(compiled.body, {
-          dataSource: compiled.dataSource,
-          signal: requestController.signal,
-        }),
-        needsMetrics
-          ? fetchPredictMetrics(compiled.body, {
-              dataSource: compiled.dataSource,
-              signal: requestController.signal,
-            })
-          : Promise.resolve(null),
-      ]);
+      const predResult = await runPrediction(compiled.body, {
+        dataSource: compiled.dataSource,
+        signal: requestController.signal,
+      });
       if (requestScope !== predictScopeRef.current || requestController.signal.aborted) return;
+      const metricsResult = predResult.metrics ?? null;
 
       let errorDistResult = null;
       let pfiResult = null;

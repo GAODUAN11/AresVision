@@ -2,6 +2,7 @@
 棰勬祴鍒嗘瀽椤?鈥?API 璺敱
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
@@ -143,17 +144,19 @@ async def run_prediction(
                 "horizon": result["horizon"],
                 "ls_values": result["ls_values"],
                 "model_info": result["model_info"],
+                "metrics": result.get("metrics"),
                 "source_meta": source_meta,
             }
 
         ps, source_meta, resolved_year = await _resolve_predict_context(
             request, body.mars_year, data_source, current_user
         )
-        result = ps.predict(
+        result = await asyncio.to_thread(ps.predict,
             mars_year=resolved_year,
             ls_start=body.ls_start,
             selected_variables=body.selected_variables,
             horizon=body.horizon,
+            include_points=False,
         )
         return {
             "ground_truth": result["ground_truth"],
@@ -163,6 +166,7 @@ async def run_prediction(
             "horizon": result["horizon"],
             "ls_values": result["ls_values"],
             "model_info": result["model_info"],
+            "metrics": result.get("metrics"),
             "source_meta": source_meta,
         }
     except ValueError as e:
@@ -211,11 +215,12 @@ async def get_eval_metrics(
         ps, source_meta, resolved_year = await _resolve_predict_context(
             request, body.mars_year, data_source, current_user
         )
-        result = ps.predict(
+        result = await asyncio.to_thread(ps.predict,
             mars_year=resolved_year,
             ls_start=body.ls_start,
             selected_variables=body.selected_variables,
             horizon=body.horizon,
+            include_points=False,
         )
         metrics = dict(result["metrics"])
         metrics["source_meta"] = source_meta
@@ -318,7 +323,7 @@ async def prewarm_predict_source(
         warmed = False
         ml_data_prep = getattr(ps, "ml_data_prep", None)
         if ml_data_prep is not None and hasattr(ml_data_prep, "prewarm_for_year"):
-            ml_data_prep.prewarm_for_year(resolved_year)
+            await asyncio.to_thread(ml_data_prep.prewarm_for_year, resolved_year)
             warmed = True
         return {"ok": True, "warmed": warmed, "mars_year": resolved_year, "source_meta": source_meta}
     except HTTPException:
@@ -345,7 +350,10 @@ async def get_ablation_results(
         ps, _source_meta, resolved_year = await _resolve_predict_context(
             request, my, data_source, current_user
         )
-        items = ps.get_ablation_results(mars_year=resolved_year, ls_start=ls)
+        items = await asyncio.to_thread(ps.get_ablation_results,
+            mars_year=resolved_year,
+            ls_start=ls,
+        )
         return {"items": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"娑堣瀺瀹為獙閿欒: {e}")
@@ -375,7 +383,9 @@ async def get_performance_results(
                 resolved_year,
                 data_source,
             )
-        result = ps.get_performance_curve(selected_variables=body.selected_variables)
+        result = await asyncio.to_thread(ps.get_performance_curve,
+            selected_variables=body.selected_variables,
+        )
         if isinstance(result, dict):
             result["source_meta"] = source_meta
         return result
@@ -413,7 +423,9 @@ async def get_performance_comparison(
                 from config import VARIABLE_SHORTHANDS
                 key = "".join([VARIABLE_SHORTHANDS.get(v, v[0]) for v in sorted(vars_list)])
             
-            perf = ps.get_performance_curve(selected_variables=vars_list)
+            perf = await asyncio.to_thread(ps.get_performance_curve,
+                selected_variables=vars_list,
+            )
             results[key] = perf
         return {"results": results, "source_meta": source_meta}
     except Exception as e:
@@ -485,8 +497,8 @@ async def get_error_distribution(
                 personal_source_service=getattr(request.app.state, "personal_data_source_service", None),
             )
         ps = _get_predict_service(request)
-        return ps.get_error_distribution(
-            selected_variables=selected_variables
+        return await asyncio.to_thread(ps.get_error_distribution,
+            selected_variables=selected_variables,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -526,7 +538,9 @@ async def get_permutation_importance(
                 personal_source_service=getattr(request.app.state, "personal_data_source_service", None),
             )
         ps = _get_predict_service(request)
-        return ps.get_permutation_importance(selected_variables=selected_variables)
+        return await asyncio.to_thread(ps.get_permutation_importance,
+            selected_variables=selected_variables,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:

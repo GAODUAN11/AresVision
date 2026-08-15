@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import torch
 import numpy as np
@@ -338,7 +339,7 @@ class InferenceService:
         horizon,
     ):
         async def compute():
-            return await self._predict_task_with_context(
+            return await asyncio.to_thread(self._predict_task_with_context,
                 task=task,
                 hypers=hypers,
                 mars_year=mars_year,
@@ -365,11 +366,17 @@ class InferenceService:
     ):
         async def compute():
             if getattr(task, "model_source", "official") == "uploaded":
-                return self._uploaded_task_test_set_metrics(
-                    task, hypers, horizon, data_dirs=data_dirs
+                return await asyncio.to_thread(self._uploaded_task_test_set_metrics,
+                    task,
+                    hypers,
+                    horizon,
+                    data_dirs,
                 )
-            return self._official_task_test_set_metrics(
-                task, hypers, horizon, data_dirs=data_dirs
+            return await asyncio.to_thread(self._official_task_test_set_metrics,
+                task,
+                hypers,
+                horizon,
+                data_dirs,
             )
 
         return await self.analysis_cache.get_or_compute(
@@ -386,18 +393,21 @@ class InferenceService:
     ):
         async def compute():
             if getattr(task, "model_source", "official") == "uploaded":
-                truth_raw, pred_raw, actual_horizon = (
-                    self._uploaded_task_test_set_arrays(
-                        task, hypers, horizon, data_dirs=data_dirs
-                    )
+                truth_raw, pred_raw, actual_horizon = await asyncio.to_thread(self._uploaded_task_test_set_arrays,
+                    task,
+                    hypers,
+                    horizon,
+                    data_dirs,
                 )
             else:
-                truth_raw, pred_raw, actual_horizon = (
-                    self._official_task_test_set_arrays(
-                        task, hypers, horizon, data_dirs=data_dirs
-                    )
+                truth_raw, pred_raw, actual_horizon = await asyncio.to_thread(self._official_task_test_set_arrays,
+                    task,
+                    hypers,
+                    horizon,
+                    data_dirs,
                 )
-            return compute_error_distribution(
+            return await asyncio.to_thread(
+                compute_error_distribution,
                 truth_raw[:, :actual_horizon],
                 pred_raw[:, :actual_horizon],
             )
@@ -421,7 +431,7 @@ class InferenceService:
         selected_variables,
     ):
         async def compute():
-            return self._task_permutation_importance_with_context(
+            return await asyncio.to_thread(self._task_permutation_importance_with_context,
                 task=task,
                 hypers=hypers,
                 selected_variables=selected_variables,
@@ -518,7 +528,7 @@ class InferenceService:
             "hyperparameters": safe_hypers,
         }
 
-    async def _predict_task_with_context(
+    def _predict_task_with_context(
         self,
         task,
         hypers: dict,
@@ -575,9 +585,9 @@ class InferenceService:
         model_info["requested_ls_start"] = float(ls_start)
 
         return {
-            "ground_truth": self._fields_to_dicts(truth_raw, lat_arr, lon_arr),
-            "prediction": self._fields_to_dicts(pred_raw, lat_arr, lon_arr),
-            "residual": self._fields_to_dicts(residual_raw, lat_arr, lon_arr),
+            "ground_truth": self._fields_to_dicts(truth_raw, lat_arr, lon_arr, include_points=False),
+            "prediction": self._fields_to_dicts(pred_raw, lat_arr, lon_arr, include_points=False),
+            "residual": self._fields_to_dicts(residual_raw, lat_arr, lon_arr, include_points=False),
             "selected_variables": selected_variables,
             "horizon": actual_horizon,
             "ls_values": ls_values,
@@ -1137,27 +1147,35 @@ class InferenceService:
         return [channel_map[channel] for channel in list(channels or "") if channel in channel_map]
 
     @staticmethod
-    def _fields_to_dicts(fields: np.ndarray, lat_arr: np.ndarray, lon_arr: np.ndarray) -> list[dict]:
+    def _fields_to_dicts(
+        fields: np.ndarray,
+        lat_arr: np.ndarray,
+        lon_arr: np.ndarray,
+        include_points: bool = True,
+    ) -> list[dict]:
         result = []
+        lat_list = [float(v) for v in lat_arr]
+        lon_list = [float(v) for v in lon_arr]
         for step in range(fields.shape[0]):
             field = fields[step]
             points = []
-            for i, lat in enumerate(lat_arr):
-                for j, lon in enumerate(lon_arr):
-                    val = float(field[i, j])
-                    if not np.isnan(val):
-                        points.append({
-                            "lat": float(lat),
-                            "lng": float(lon) if lon <= 180 else float(lon - 360),
-                            "val": val,
-                        })
+            if include_points:
+                for i, lat in enumerate(lat_arr):
+                    for j, lon in enumerate(lon_arr):
+                        val = float(field[i, j])
+                        if not np.isnan(val):
+                            points.append({
+                                "lat": float(lat),
+                                "lng": float(lon) if lon <= 180 else float(lon - 360),
+                                "val": val,
+                            })
 
             valid = field[~np.isnan(field)]
             result.append({
                 "points": points,
-                "lat": [float(v) for v in lat_arr],
-                "lon": [float(v) for v in lon_arr],
-                "field": [[float(v) for v in row] for row in np.nan_to_num(field)],
+                "lat": lat_list,
+                "lon": lon_list,
+                "field": np.nan_to_num(field).tolist(),
                 "minVal": float(np.nanmin(valid)) if len(valid) > 0 else 0.0,
                 "maxVal": float(np.nanmax(valid)) if len(valid) > 0 else 1.0,
             })

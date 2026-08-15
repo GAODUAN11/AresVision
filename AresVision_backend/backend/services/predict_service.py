@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import asyncio
+from threading import RLock
 import numpy as np
 import torch
 from sklearn.metrics import r2_score
@@ -37,6 +38,7 @@ class PredictOrchestratorService:
         self.inference = inference
 
         self._result_cache = LRUCache(maxsize=32)
+        self._result_cache_lock = RLock()
 
     def predict(
         self,
@@ -44,15 +46,17 @@ class PredictOrchestratorService:
         ls_start: float,
         selected_variables: list[str],
         horizon: int = 3,
+        include_points: bool = True,
     ) -> dict:
         cache_key = self._make_cache_key(mars_year, ls_start, selected_variables, horizon)
-        if cache_key in self._result_cache:
-            cached_res = self._result_cache[cache_key]
-            if "model_info" in cached_res:
-                logger.info("命中有效预测缓存")
-                return cached_res
-            else:
-                logger.info("响应缓存存在但缺少元数据，强制刷新")
+        with self._result_cache_lock:
+            if cache_key in self._result_cache:
+                cached_res = self._result_cache[cache_key]
+                if "model_info" in cached_res:
+                    logger.info("命中有效预测缓存")
+                    return cached_res
+                else:
+                    logger.info("响应缓存存在但缺少元数据，强制刷新")
 
         cfg = MODEL_CONFIG
         window = cfg["input_window"]
@@ -96,10 +100,22 @@ class PredictOrchestratorService:
         result = {
             "ground_truth": self._fields_to_dicts(
                 truth_arr if truth_arr is not None else pred_arr,
-                lat_arr, lon_arr
+                lat_arr,
+                lon_arr,
+                include_points=include_points,
             ),
-            "prediction": self._fields_to_dicts(pred_arr, lat_arr, lon_arr),
-            "residual": self._fields_to_dicts(residual_arr, lat_arr, lon_arr),
+            "prediction": self._fields_to_dicts(
+                pred_arr,
+                lat_arr,
+                lon_arr,
+                include_points=include_points,
+            ),
+            "residual": self._fields_to_dicts(
+                residual_arr,
+                lat_arr,
+                lon_arr,
+                include_points=include_points,
+            ),
             "ls_values": [float(v) for v in truth_ls[:actual_horizon]],
             "selected_variables": selected_variables,
             "horizon": actual_horizon,
@@ -107,7 +123,8 @@ class PredictOrchestratorService:
             "model_info": model_info,
         }
 
-        self._result_cache[cache_key] = result
+        with self._result_cache_lock:
+            self._result_cache[cache_key] = result
         return result
 
     def _run_inference_pipeline(
@@ -142,11 +159,12 @@ class PredictOrchestratorService:
         # 如果数据源是预处理好的张量，则跳过标准化步骤
         if getattr(self.ml_data_prep, "processed_data", None) is not None:
             scaled_input = final_input_arr
-            # 同步反标准化所需的均值和标准差，确保一致性
-            self.transforms.y_mean = self.ml_data_prep.processed_data.get('y_mean', self.transforms.y_mean)
-            self.transforms.y_std = self.ml_data_prep.processed_data.get('y_std', self.transforms.y_std)
+            y_mean = self.ml_data_prep.processed_data.get("y_mean", self.transforms.y_mean)
+            y_std = self.ml_data_prep.processed_data.get("y_std", self.transforms.y_std)
         else:
             scaled_input = self.transforms.preprocess_input(final_input_arr, selected_variables)
+            y_mean = self.transforms.y_mean
+            y_std = self.transforms.y_std
 
         # d. 模型推理
         device = self.inference.device
@@ -154,7 +172,7 @@ class PredictOrchestratorService:
         pred_scaled = self.inference.infer(model, x, horizon)
 
         # e. 反标准化
-        pred_physical = self.transforms.postprocess_output(pred_scaled)
+        pred_physical = self.transforms.postprocess_output(pred_scaled, y_mean=y_mean, y_std=y_std)
         return pred_physical, model_info
 
     def get_ablation_results(
@@ -174,7 +192,13 @@ class PredictOrchestratorService:
         results = []
         for label, variables in combos:
             try:
-                result = self.predict(mars_year, ls_start, variables, horizon=3)
+                result = self.predict(
+                    mars_year,
+                    ls_start,
+                    variables,
+                    horizon=3,
+                    include_points=False,
+                )
                 m = result["metrics"]["overall"]
                 results.append({
                     "variable_combo": label,
@@ -247,7 +271,13 @@ class PredictOrchestratorService:
             
             try:
                 # 调用 predict 获取指标
-                res = self.predict(my, ls, selected_variables, horizon=3)
+                res = self.predict(
+                    my,
+                    ls,
+                    selected_variables,
+                    horizon=3,
+                    include_points=False,
+                )
                 m_overall = res["metrics"]["overall"]
                 
                 # 收集用于全局指标计算的数据
@@ -357,7 +387,13 @@ class PredictOrchestratorService:
             my = 27 if i < my28_start else 28
             try:
                 # 只获取当前时间的预测结果
-                res = self.predict(my, ls, selected_variables, horizon=3)
+                res = self.predict(
+                    my,
+                    ls,
+                    selected_variables,
+                    horizon=3,
+                    include_points=False,
+                )
                 for h_idx in range(res["horizon"]):
                     f_truth = np.array(res["ground_truth"][h_idx]["field"]).flatten()
                     f_pred = np.array(res["prediction"][h_idx]["field"]).flatten()
@@ -507,27 +543,31 @@ class PredictOrchestratorService:
         fields: np.ndarray,
         lat_arr: np.ndarray,
         lon_arr: np.ndarray,
+        include_points: bool = True,
     ) -> list[dict]:
         result = []
+        lat_list = [float(v) for v in lat_arr]
+        lon_list = [float(v) for v in lon_arr]
         for step in range(fields.shape[0]):
             field = fields[step]
             points = []
-            for i, lat in enumerate(lat_arr):
-                for j, lon in enumerate(lon_arr):
-                    val = float(field[i, j])
-                    if not np.isnan(val):
-                        points.append({
-                            "lat": float(lat),
-                            "lng": float(lon) if lon <= 180 else float(lon - 360),
-                            "val": val,
-                        })
+            if include_points:
+                for i, lat in enumerate(lat_arr):
+                    for j, lon in enumerate(lon_arr):
+                        val = float(field[i, j])
+                        if not np.isnan(val):
+                            points.append({
+                                "lat": float(lat),
+                                "lng": float(lon) if lon <= 180 else float(lon - 360),
+                                "val": val,
+                            })
 
             valid = field[~np.isnan(field)]
             result.append({
                 "points": points,
-                "lat": [float(v) for v in lat_arr],
-                "lon": [float(v) for v in lon_arr],
-                "field": [[float(v) for v in row] for row in np.nan_to_num(field)],
+                "lat": lat_list,
+                "lon": lon_list,
+                "field": np.nan_to_num(field).tolist(),
                 "minVal": float(np.nanmin(valid)) if len(valid) > 0 else 0.0,
                 "maxVal": float(np.nanmax(valid)) if len(valid) > 0 else 1.0,
             })

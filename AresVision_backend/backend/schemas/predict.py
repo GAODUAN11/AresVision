@@ -19,9 +19,9 @@ class PredictRequest(BaseModel):
 
 
 class PredictFieldData(BaseModel):
-    points: list[dict]
-    lat: list[float]
-    lon: list[float]
+    points: list[dict] = Field(default_factory=list)
+    lat: list[float] = Field(default_factory=list)
+    lon: list[float] = Field(default_factory=list)
     field: list[list[float]]
     minVal: float
     maxVal: float
@@ -35,6 +35,7 @@ class PredictResponse(BaseModel):
     horizon: int
     ls_values: list[float]
     model_info: dict = Field(default_factory=dict)
+    metrics: dict[str, Any] | None = None
     source_meta: SourceMeta | None = None
 
 

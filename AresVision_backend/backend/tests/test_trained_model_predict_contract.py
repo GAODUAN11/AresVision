@@ -13,6 +13,8 @@ sys.modules["auth.dependencies"] = auth_dependencies
 
 models = types.ModuleType("database.models")
 models.User = object
+models.ModelTrainingTask = object
+models.PredictionAnalysisCache = object
 sys.modules["database.models"] = models
 
 analysis_service = types.ModuleType("services.analysis_service")
@@ -26,10 +28,6 @@ sys.modules["services.personal_data_source_service"] = personal_service
 predict_data_service = types.ModuleType("services.predict_data_service")
 predict_data_service.PredictDataService = object
 sys.modules["services.predict_data_service"] = predict_data_service
-
-predict_service = types.ModuleType("services.predict_service")
-predict_service.PredictOrchestratorService = object
-sys.modules["services.predict_service"] = predict_service
 
 from routers import predict  # noqa: E402
 from schemas.predict import PredictRequest  # noqa: E402
@@ -144,6 +142,50 @@ class FakeTrainingInferenceService:
         }
 
 
+class FakePredictService:
+    def __init__(self):
+        self.calls = []
+
+    def predict(self, **kwargs):
+        self.calls.append(kwargs)
+        include_points = kwargs.get("include_points", True)
+        points = [{"lat": 0.0, "lng": 0.0, "val": 1.0}] if include_points else []
+        return {
+            "ground_truth": [_field(1.0) if include_points else {
+                "points": points,
+                "lat": [0.0],
+                "lon": [0.0],
+                "field": [[1.0]],
+                "minVal": 1.0,
+                "maxVal": 1.0,
+            }],
+            "prediction": [_field(2.0) if include_points else {
+                "points": points,
+                "lat": [0.0],
+                "lon": [0.0],
+                "field": [[2.0]],
+                "minVal": 2.0,
+                "maxVal": 2.0,
+            }],
+            "residual": [_field(1.0) if include_points else {
+                "points": points,
+                "lat": [0.0],
+                "lon": [0.0],
+                "field": [[1.0]],
+                "minVal": 1.0,
+                "maxVal": 1.0,
+            }],
+            "selected_variables": ["U_Wind"],
+            "horizon": 1,
+            "ls_values": [95.0],
+            "model_info": {"model_source": "official"},
+            "metrics": {
+                "overall": {"step": 0, "rmse": 1.0, "mae": 1.0, "ssim": 0.0, "r2": 0.9},
+                "per_step": [{"step": 1, "rmse": 1.0, "mae": 1.0, "ssim": 0.0, "r2": 0.9}],
+            },
+        }
+
+
 def _field(value):
     return {
         "points": [{"lat": 0.0, "lng": 0.0, "val": value}],
@@ -155,24 +197,48 @@ def _field(value):
     }
 
 
-def _request(service=None):
+def _request(service=None, *, predict_service=None):
     state = type("State", (), {})()
     if service is not None:
         state.training_inference_service = service
+    if predict_service is not None:
+        state.predict_service = predict_service
     app = type("App", (), {"state": state})()
     return type("Request", (), {"app": app})()
 
 
-async def test_predict_run_uses_training_task_inference_when_task_id_is_present():
+def test_predict_run_uses_prediction_metrics_when_task_id_is_absent():
+    service = FakePredictService()
+    body = PredictRequest(selected_variables=["U_Wind"], horizon=3, ls_start=90, mars_year=27)
+
+    payload = asyncio.run(
+        predict.run_prediction(
+            _request(predict_service=service),
+            body,
+            data_source="default",
+            current_user=None,
+        )
+    )
+
+    assert payload["metrics"]["overall"]["r2"] == 0.9
+    assert payload["ground_truth"][0]["points"] == []
+    assert payload["prediction"][0]["points"] == []
+    assert service.calls[0].get("include_points") is False
+
+
+def test_predict_run_uses_training_task_inference_when_task_id_is_present():
     service = FakeTrainingInferenceService()
     body = PredictRequest(training_task_id=42, selected_variables=["U_Wind"], horizon=3, ls_start=90, mars_year=27)
 
-    payload = await predict.run_prediction(
-        _request(service), body, data_source="default", current_user=AUTHENTICATED_USER
+    payload = asyncio.run(
+        predict.run_prediction(
+            _request(service), body, data_source="default", current_user=AUTHENTICATED_USER
+        )
     )
 
     assert payload["model_info"]["model_source"] == "trained_task"
     assert payload["model_info"]["training_task_id"] == 42
+    assert payload["metrics"]["overall"]["rmse"] == 1.0
     assert service.prediction_calls[0]["task_id"] == 42
     assert service.prediction_calls[0]["current_user"] is AUTHENTICATED_USER
 

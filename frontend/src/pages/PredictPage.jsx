@@ -787,9 +787,17 @@ export default function PredictPage() {
     const nextPfiKey = analysisVisibility.permutationImportance
       ? buildPermutationImportanceKey(analysisContext)
       : null;
-    const shouldFetchMetrics = Boolean(nextMetricsKey) && (nextMetricsKey !== metricsKey || !metrics);
+    const shouldFetchMetrics = modelMode === PREDICT_MODEL_MODE_TRAINED
+      && Boolean(nextMetricsKey)
+      && (nextMetricsKey !== metricsKey || !metrics);
     const shouldFetchErrorDist = Boolean(nextErrorDistKey) && (nextErrorDistKey !== errorDistKey || !errorDistData);
     const shouldFetchPfi = Boolean(nextPfiKey) && (nextPfiKey !== pfiKey || !pfiData);
+    const metricsPromise = shouldFetchMetrics
+      ? fetchPredictMetrics(body, {
+          dataSource: dataSourceMode,
+          signal: requestToken.signal,
+        })
+      : Promise.resolve(null);
 
     if (shouldFetchMetrics) {
       setMetricsLoading(true);
@@ -807,14 +815,12 @@ export default function PredictPage() {
           dataSource: dataSourceMode,
           signal: requestToken.signal,
         }),
-        shouldFetchMetrics
-          ? fetchPredictMetrics(body, {
-              dataSource: dataSourceMode,
-              signal: requestToken.signal,
-            })
-          : Promise.resolve(metrics),
+        metricsPromise,
       ]);
       if (!isRequestCurrent(requestToken, requestContextKey)) return;
+      const resolvedMetrics = modelMode === PREDICT_MODEL_MODE_TRAINED
+        ? metricsResult ?? predResult.metrics ?? null
+        : predResult.metrics ?? null;
 
       const errorDistPromise = analysisVisibility.errorDistribution
         ? !nextErrorDistKey
@@ -846,14 +852,14 @@ export default function PredictPage() {
       const [errorDistResult, pfiResult] = await Promise.all([errorDistPromise, pfiPromise]);
       if (!isRequestCurrent(requestToken, requestContextKey)) return;
       const nextPerformanceData = modelMode === PREDICT_MODEL_MODE_TRAINED
-        ? { results: { current: buildPerformanceMetricsFromEval(metricsResult) } }
+        ? { results: { current: buildPerformanceMetricsFromEval(resolvedMetrics) } }
         : performanceData;
       const nextPerformanceKey = modelMode === PREDICT_MODEL_MODE_TRAINED
         ? currentPerformanceContextKey
         : performanceKey;
 
       setResults(predResult);
-      setMetrics(metricsResult);
+      setMetrics(resolvedMetrics);
       setErrorDistData(errorDistResult);
       setPfiData(pfiResult);
       setResultContextKey(requestContextKey);
@@ -868,7 +874,7 @@ export default function PredictPage() {
       writePredictCache({
         resultContextKey: requestContextKey,
         results: predResult,
-        metrics: metricsResult,
+        metrics: resolvedMetrics,
         errorDistData: errorDistResult,
         pfiData: pfiResult,
         metricsKey: nextMetricsKey,

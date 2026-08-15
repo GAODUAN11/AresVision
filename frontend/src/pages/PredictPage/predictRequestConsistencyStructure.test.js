@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const pageSource = fs.readFileSync(path.join(currentDir, '..', 'PredictPage.jsx'), 'utf8');
 const sidebarSource = fs.readFileSync(path.join(currentDir, 'PredictSidebar.jsx'), 'utf8');
+const workflowSource = fs.readFileSync(
+  path.join(currentDir, 'WorkflowCanvas', 'WorkflowCanvas.jsx'),
+  'utf8'
+);
 
 test('prediction page owns request coordination and context-aware cache restoration', () => {
   assert.match(pageSource, /useRef/);
@@ -66,6 +70,19 @@ test('all protected page API calls receive the active request signal', () => {
   assert.match(pageSource, /compareTrainingModelPfi\([\s\S]*?signal:\s*requestToken\.signal/);
 });
 
+test('default prediction reuses run metrics instead of pairing runPrediction with fetchPredictMetrics', () => {
+  const handlePredictSource = pageSource
+    .split('const handlePredict = useCallback(async () => {', 2)[1]
+    .split('const handleLoadCompareErrorDistribution', 1)[0];
+  const predictionPromiseBlock = handlePredictSource
+    .split('const [predResult, metricsResult] = await Promise.all([', 2)[1]
+    .split(']);', 1)[0];
+
+  assert.match(handlePredictSource, /predResult\.metrics/);
+  assert.match(predictionPromiseBlock, /metricsPromise/);
+  assert.doesNotMatch(predictionPromiseBlock, /fetchPredictMetrics\(/);
+});
+
 test('rendering uses only single-model results matching the current context', () => {
   assert.match(pageSource, /resultContextKey === currentPredictionContextKey/);
   assert.match(pageSource, /results=\{activeResults\}/);
@@ -92,4 +109,9 @@ test('loading locks every control that can change prediction request context', (
   assert.match(sidebarSource, /disabled=\{requestContextLocked \|\| isSwitchingSource\}/);
   assert.match(sidebarSource, /type="range"[\s\S]*disabled=\{requestContextLocked\}/);
   assert.match(sidebarSource, /type="checkbox"[\s\S]*disabled=\{requestContextLocked\}/);
+});
+
+test('workflow canvas reuses run metrics without a second metrics request', () => {
+  assert.match(workflowSource, /predResult\.metrics/);
+  assert.doesNotMatch(workflowSource, /fetchPredictMetrics/);
 });

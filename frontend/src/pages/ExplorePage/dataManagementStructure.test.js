@@ -52,3 +52,50 @@ test('personal preview loading ignores stale async responses after selection or 
   assert.match(myDataTab, /requestId\s*!==\s*previewRequestRef\.current/);
   assert.match(myDataTab, /onSelectDataset/);
 });
+
+test('data management chrome uses compact tabs without an explanatory task card', () => {
+  assert.match(explorePage, /CompactTaskTabs/);
+  assert.doesNotMatch(explorePage, /quickTitle/);
+  assert.doesNotMatch(explorePage, /quickDesc/);
+  assert.doesNotMatch(explorePage, /<GlowCard[^>]*>\s*<div[^>]*>\s*<div[^>]*>\s*<div[\s\S]*ViewTab/);
+});
+
+test('official source page keeps only source cards and a compact coverage summary', () => {
+  assert.match(defaultDatasetTab, /OfficialCoverageSummary/);
+  assert.doesNotMatch(defaultDatasetTab, /MetricCard/);
+  assert.doesNotMatch(defaultDatasetTab, /VariableGroupCard/);
+  assert.doesNotMatch(defaultDatasetTab, /OFFICIAL_CAPABILITY_TAG_KEYS/);
+  assert.doesNotMatch(defaultDatasetTab, /OFFICIAL_VARIABLE_GROUPS/);
+});
+
+test('official source page derives each source status from overview coverage data', () => {
+  assert.match(defaultDatasetTab, /fetchOverviewInfo/);
+  assert.doesNotMatch(defaultDatasetTab, /fetchDataInfo/);
+  assert.match(defaultDatasetTab, /OfficialSourceSituationGrid/);
+  assert.match(defaultDatasetTab, /sourceCoverageStats/);
+  assert.match(defaultDatasetTab, /coverage\?\.mcd/);
+  assert.match(defaultDatasetTab, /coverage\?\.openmars/);
+  assert.match(defaultDatasetTab, /coverage\?\.nomad/);
+});
+
+test('personal data default page keeps contribution detail secondary', () => {
+  assert.match(myDataTab, /PersonalSummaryStrip/);
+  assert.match(myDataTab, /summaryStats\.inReview/);
+  assert.doesNotMatch(myDataTab, /Usage Boundary/);
+  assert.doesNotMatch(myDataTab, /使用边界/);
+  assert.doesNotMatch(myDataTab, /copy\.contributionReadyStat}\s+value=\{summaryStats\.contributionReady\}/);
+});
+
+test('personal data queue and detail default views stay compact', () => {
+  assert.match(myDataTab, /CompactQueueItem/);
+  assert.match(myDataTab, /PersonalCoreDetail/);
+  assert.doesNotMatch(myDataTab, /copy\.queueDesc/);
+  assert.doesNotMatch(myDataTab, /desc=\{copy\.sourceModeDesc\}/);
+  assert.doesNotMatch(myDataTab, /\{viewingCtx\.datasetState\.desc\}/);
+});
+
+test('admin inline workspace uses compact panel sizing', () => {
+  assert.match(adminReviewPanel, /adminWorkspaceMinHeight/);
+  assert.doesNotMatch(adminReviewPanel, /minHeight:\s*640/);
+  assert.match(adminReviewPanel, /height:\s*56/);
+});

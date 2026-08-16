@@ -12,6 +12,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { getPendingReviews, reviewUpload, getApprovedDatasets, revokeDataset } from '../services/api';
 
+const adminWorkspaceMinHeight = 520;
+
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
 
 function FileIcon({ size = 14, color = 'currentColor' }) {
@@ -660,7 +662,7 @@ function PanelContent({ t, isLight, onClose, onReviewComplete, reviewSignal = 0 
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          height: 70,
+          height: 56,
         }}>
           <div>
             <div style={{
@@ -736,7 +738,7 @@ export function AdminReviewWorkspace({ onReviewComplete, reviewSignal = 0 }) {
   return (
     <div
       style={{
-        minHeight: 640,
+        minHeight: adminWorkspaceMinHeight,
         border: isLight ? '1px solid rgba(26,26,46,0.12)' : '1px solid rgba(232,237,243,0.10)',
         borderRadius: 14,
         overflow: 'hidden',

@@ -2,46 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import C from '../../constants/colors';
 import { useT } from '../../i18n';
 import GlowCard from '../../components/GlowCard';
-import { fetchDataInfo } from '../../services/api';
+import { fetchOverviewInfo } from '../../services/api';
 import { LoadingBox } from './ExploreComponents';
 
-const OFFICIAL_VARIABLE_GROUPS = [
-  {
-    key: 'ozoneCore',
-    coverage: 100,
-    variables: ['o3col'],
-    color: C.mars,
-  },
-  {
-    key: 'drivers',
-    coverage: 100,
-    variables: ['Temperature', 'Pressure', 'Dust_Optical_Depth'],
-    color: C.blue,
-  },
-  {
-    key: 'radiative',
-    coverage: 100,
-    variables: ['Solar_Flux_DN'],
-    color: C.green,
-  },
-  {
-    key: 'circulation',
-    coverage: 100,
-    variables: ['U_Wind', 'V_Wind'],
-    color: '#9bd2ff',
-  },
-];
-
-const OFFICIAL_CAPABILITY_TAG_KEYS = [
-  'ozoneDiagnosis',
-  'driverCoupling',
-  'predictionTraining',
-  'crossYearAnalysis',
-  'featureBaseline',
-  'unifiedIngestion',
-];
-
-const HERO_TAG_KEYS = ['openmars', 'mcd', 'officialBenchmark', 'unifiedGrid', 'featureSpace'];
 const OFFICIAL_SOURCE_CARDS = [
   {
     key: 'mcd',
@@ -69,33 +32,6 @@ const OFFICIAL_SOURCE_CARDS = [
   },
 ];
 
-function getSourceModeLabel(mode, t) {
-  const map = {
-    default: t('explore.defaultDataset.sourceMode.default'),
-    personal_full_year: t('explore.defaultDataset.sourceMode.personal_full_year'),
-    personal_mcd_plus_system_openmars: t('explore.defaultDataset.sourceMode.personal_mcd_plus_system_openmars'),
-  };
-  return map[mode] || mode || '--';
-}
-
-function toYearRows(info) {
-  const years = Array.isArray(info?.available_years) ? info.available_years : [];
-  const details = info?.details || {};
-
-  return years
-    .map((year) => {
-      const detail = details[`MY${year}`] || {};
-      const range = Array.isArray(detail.ls_range) ? detail.ls_range : [null, null];
-      return {
-        year,
-        lsStart: range[0],
-        lsEnd: range[1],
-        sourceMode: detail.source_mode || 'default',
-      };
-    })
-    .sort((a, b) => a.year - b.year);
-}
-
 function formatLs(v) {
   return Number.isFinite(v) ? `${Number(v).toFixed(1)}°` : '--';
 }
@@ -104,121 +40,90 @@ function pct(value) {
   return `${Math.max(0, Math.min(100, Number(value || 0))).toFixed(0)}%`;
 }
 
-function YearCoverageCard({ row, t }) {
-  const coverage = row.lsStart != null && row.lsEnd != null
-    ? Math.max(0, Math.min(100, ((row.lsEnd - row.lsStart) / 360) * 100))
+function intervalSpan(interval) {
+  const start = Number(interval?.start);
+  const end = Number(interval?.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  const span = end >= start ? end - start : (360 - start) + end;
+  return Math.max(0, Math.min(360, span));
+}
+
+function summarizeSourceCoverage(sourceCoverage = {}) {
+  const rows = Object.entries(sourceCoverage || {})
+    .map(([year, intervals]) => {
+      const normalizedIntervals = Array.isArray(intervals) ? intervals : [];
+      const span = Math.min(360, normalizedIntervals.reduce((sum, interval) => sum + intervalSpan(interval), 0));
+      return {
+        year: Number(year),
+        intervals: normalizedIntervals,
+        segmentCount: normalizedIntervals.length,
+        coverage: (span / 360) * 100,
+      };
+    })
+    .filter((row) => Number.isFinite(row.year))
+    .sort((a, b) => a.year - b.year);
+
+  const yearCount = rows.length;
+  const segmentCount = rows.reduce((sum, row) => sum + row.segmentCount, 0);
+  const avgCoverage = yearCount
+    ? rows.reduce((sum, row) => sum + row.coverage, 0) / yearCount
     : 0;
+  const yearRange = yearCount === 0
+    ? '--'
+    : rows[0].year === rows[yearCount - 1].year
+      ? `MY ${rows[0].year}`
+      : `MY ${rows[0].year} - MY ${rows[yearCount - 1].year}`;
 
+  return {
+    rows,
+    yearCount,
+    segmentCount,
+    avgCoverage,
+    yearRange,
+    hasData: yearCount > 0,
+  };
+}
+
+function buildSourceCoverageStats(dataInfo) {
+  const coverage = dataInfo?.ozone_capabilities?.coverage || {};
+  return {
+    mcd: summarizeSourceCoverage(coverage?.mcd),
+    openmars: summarizeSourceCoverage(coverage?.openmars),
+    nomad: summarizeSourceCoverage(coverage?.nomad),
+  };
+}
+
+function SourceStat({ label, value, accent }) {
   return (
-    <div
-      style={{
-        background: 'var(--bg-card)',
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: '16px 18px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        minHeight: 188,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        <div
-          style={{
-            fontSize: 'calc(13px * var(--font-scale, 1))',
-            fontWeight: 700,
-            color: C.ice,
-            fontFamily: "'Orbitron', sans-serif",
-            letterSpacing: 1.2,
-          }}
-        >
-          {`MY ${row.year}`}
-        </div>
-        <span
-          style={{
-            fontSize: 'calc(10px * var(--font-scale, 1))',
-            color: C.blue,
-            border: '1px solid rgba(74,158,255,0.35)',
-            background: 'rgba(74,158,255,0.08)',
-            borderRadius: 999,
-            padding: '3px 9px',
-            fontWeight: 600,
-          }}
-        >
-          {t('explore.defaultDataset.labelOfficial')}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <div style={{ fontSize: 'calc(28px * var(--font-scale, 1))', fontWeight: 700, color: C.mars, fontFamily: "'Orbitron', sans-serif" }}>
-          {pct(coverage)}
-        </div>
-        <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30 }}>{t('explore.defaultDataset.coverageHint')}</div>
-      </div>
-
-      <div style={{ height: 7, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
-        <div
-          style={{
-            width: `${coverage}%`,
-            height: '100%',
-            background: coverage >= 90 ? C.green : coverage >= 70 ? '#f59e0b' : C.mars,
-          }}
-        />
-      </div>
-
-      <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8 }}>
-        <div>{`${t('explore.defaultDataset.metaLsRange')}: ${formatLs(row.lsStart)} - ${formatLs(row.lsEnd)}`}</div>
-        <div>{`${t('explore.defaultDataset.metaGrid')}: 5° x 5°`}</div>
-        <div>{`${t('explore.defaultDataset.metaSourceMode')}: ${getSourceModeLabel(row.sourceMode, t)}`}</div>
-      </div>
+    <div>
+      <div style={{ fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice30, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 'calc(13px * var(--font-scale, 1))', color: accent, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
 
-function MetricCard({ eyebrow, value, label, desc, accent = C.blue }) {
-  return (
-    <div
-      style={{
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: '16px 18px',
-        background: 'rgba(255,255,255,0.02)',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 'calc(10px * var(--font-scale, 1))',
-          color: accent,
-          fontWeight: 700,
-          letterSpacing: 1.6,
-          fontFamily: "'Orbitron', sans-serif",
-        }}
-      >
-        {eyebrow}
-      </div>
-      <div style={{ marginTop: 10, fontSize: 'calc(28px * var(--font-scale, 1))', color: C.ice, fontWeight: 700, fontFamily: "'Orbitron', sans-serif" }}>
-        {value}
-      </div>
-      <div style={{ marginTop: 4, fontSize: 'calc(12px * var(--font-scale, 1))', color: C.ice60, fontWeight: 600 }}>{label}</div>
-      <div style={{ marginTop: 8, fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.75 }}>{desc}</div>
-    </div>
-  );
-}
+function SourceCard({ title, subtitle, tags, body, stats, accent = C.blue, loading, t }) {
+  const statusLabel = loading
+    ? t('common.loading')
+    : stats?.hasData
+      ? t('explore.defaultDataset.labelOfficial')
+      : t('common.noData');
+  const statusColor = stats?.hasData ? C.green : C.ice30;
 
-function SourceCard({ title, subtitle, tags, body, accent = C.blue }) {
   return (
     <div
       style={{
         border: `1px solid ${accent}33`,
         borderRadius: 14,
-        padding: '16px 18px',
-        background: `linear-gradient(135deg, ${accent}12, rgba(255,255,255,0.02))`,
+        padding: '15px 16px',
+        background: `linear-gradient(135deg, ${accent}10, rgba(255,255,255,0.02))`,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
+        minHeight: 214,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
         <div>
           <div
             style={{
@@ -233,8 +138,39 @@ function SourceCard({ title, subtitle, tags, body, accent = C.blue }) {
           </div>
           <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, marginTop: 3 }}>{subtitle}</div>
         </div>
+        <span
+          style={{
+            alignSelf: 'flex-start',
+            fontSize: 'calc(10px * var(--font-scale, 1))',
+            color: statusColor,
+            padding: '3px 8px',
+            borderRadius: 999,
+            border: `1px solid ${statusColor}33`,
+            background: `${statusColor}12`,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {statusLabel}
+        </span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+        <SourceStat label={t('explore.defaultDataset.metricCoverageLabel')} value={loading ? '--' : stats.yearRange} accent={accent} />
+        <SourceStat label={t('explore.defaultDataset.coverageAvg')} value={loading ? '--' : pct(stats.avgCoverage)} accent={accent} />
+        <SourceStat label={t('explore.defaultDataset.metaLsRange')} value={loading ? '--' : stats.segmentCount} accent={accent} />
+      </div>
+
+      <div style={{ height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
+        <div
+          style={{
+            width: loading ? '0%' : `${Math.max(3, stats.avgCoverage)}%`,
+            height: '100%',
+            background: stats?.hasData ? accent : C.ice30,
+          }}
+        />
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
         {tags.map((tag) => (
           <span
             key={tag}
@@ -251,46 +187,150 @@ function SourceCard({ title, subtitle, tags, body, accent = C.blue }) {
           </span>
         ))}
       </div>
-      <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8 }}>{body}</div>
+
+      <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.75 }}>{body}</div>
     </div>
   );
 }
 
-function VariableGroupCard({ group, t }) {
+function OfficialSourceSituationGrid({ loading, error, onRetry, sourceCoverageStats, t }) {
   return (
-    <div
-      style={{
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: '16px 18px',
-        background: 'rgba(255,255,255,0.02)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ fontSize: 'calc(13px * var(--font-scale, 1))', color: C.ice, fontWeight: 700 }}>{t(`explore.defaultDataset.variableGroups.${group.key}`)}</div>
-        <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: group.color, fontWeight: 700 }}>{pct(group.coverage)}</div>
-      </div>
-      <div style={{ marginTop: 10, height: 7, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
-        <div style={{ width: `${group.coverage}%`, height: '100%', background: group.color }} />
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-        {group.variables.map((variable) => (
-          <span
-            key={variable}
+    <GlowCard style={{ padding: '18px 20px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 14,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 'calc(11px * var(--font-scale, 1))',
+            fontWeight: 700,
+            color: C.blue,
+            fontFamily: "'Orbitron', sans-serif",
+            letterSpacing: 2,
+          }}
+        >
+          {t('explore.defaultDataset.sourceTitle')}
+        </div>
+        {error && (
+          <button
+            onClick={onRetry}
             style={{
-              fontSize: 'calc(10px * var(--font-scale, 1))',
-              color: C.ice60,
-              padding: '4px 9px',
-              borderRadius: 999,
+              minHeight: 36,
               border: `1px solid ${C.border}`,
+              borderRadius: 8,
+              padding: '5px 12px',
               background: 'rgba(255,255,255,0.03)',
+              color: C.ice60,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
             }}
           >
-            {variable}
-          </span>
+            {t('common.retry')}
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ color: C.mars, fontSize: 'calc(12px * var(--font-scale, 1))', marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+        {OFFICIAL_SOURCE_CARDS.map((source) => (
+          <SourceCard
+            key={source.key}
+            title={source.title}
+            subtitle={t(`explore.defaultDataset.${source.subtitleKey}`)}
+            tags={source.tagKeys.map((tagKey) => t(`explore.defaultDataset.sourceTags.${tagKey}`))}
+            body={t(`explore.defaultDataset.${source.bodyKey}`)}
+            stats={sourceCoverageStats[source.key]}
+            accent={source.accent}
+            loading={loading}
+            t={t}
+          />
         ))}
       </div>
-    </div>
+    </GlowCard>
+  );
+}
+
+function OfficialCoverageSummary({ loading, sourceCoverageStats, t }) {
+  if (loading) {
+    return (
+      <GlowCard style={{ padding: '18px 20px' }}>
+        <LoadingBox h={120} label={t('common.loading')} />
+      </GlowCard>
+    );
+  }
+
+  return (
+    <GlowCard style={{ padding: '16px 18px' }}>
+      <div
+        style={{
+          fontSize: 'calc(11px * var(--font-scale, 1))',
+          fontWeight: 700,
+          color: C.blue,
+          fontFamily: "'Orbitron', sans-serif",
+          letterSpacing: 2,
+          marginBottom: 12,
+        }}
+      >
+        {t('explore.defaultDataset.listTitle')}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {OFFICIAL_SOURCE_CARDS.map((source) => {
+          const stats = sourceCoverageStats[source.key];
+          const firstRow = stats.rows[0];
+          const lastRow = stats.rows[stats.rows.length - 1];
+          const firstInterval = firstRow?.intervals?.[0];
+          const lastInterval = lastRow?.intervals?.[lastRow.intervals.length - 1];
+          const lsRange = stats.hasData
+            ? `${formatLs(firstInterval?.start)} - ${formatLs(lastInterval?.end)}`
+            : '--';
+
+          return (
+            <div
+              key={source.key}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '110px minmax(120px, 1fr) minmax(160px, auto)',
+                alignItems: 'center',
+                gap: 12,
+                minHeight: 38,
+                padding: '8px 10px',
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: 'rgba(255,255,255,0.018)',
+              }}
+            >
+              <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: source.accent, fontWeight: 700, fontFamily: "'Orbitron', sans-serif" }}>
+                {source.title}
+              </div>
+              <div style={{ height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
+                <div
+                  style={{
+                    width: `${Math.max(stats.hasData ? 3 : 0, stats.avgCoverage)}%`,
+                    height: '100%',
+                    background: stats.hasData ? source.accent : C.ice30,
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice60, textAlign: 'right' }}>
+                {`${stats.yearRange} | ${pct(stats.avgCoverage)} | ${lsRange}`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </GlowCard>
   );
 }
 
@@ -304,7 +344,7 @@ export default function DefaultDatasetTab() {
     setLoading(true);
     setError('');
     try {
-      const info = await fetchDataInfo({ dataSource: 'default' });
+      const info = await fetchOverviewInfo({ dataSource: 'default' });
       setDataInfo(info);
     } catch (e) {
       setError(e?.message || t('common.error'));
@@ -317,271 +357,19 @@ export default function DefaultDatasetTab() {
     load();
   }, [load]);
 
-  const yearRows = useMemo(() => toYearRows(dataInfo), [dataInfo]);
-  const lsCoverageStats = useMemo(() => {
-    if (!yearRows.length) return { avg: '--', min: '--', max: '--' };
-    const values = yearRows
-      .map((row) => (row.lsStart != null && row.lsEnd != null ? ((row.lsEnd - row.lsStart) / 360) * 100 : null))
-      .filter((value) => value != null);
-    if (!values.length) return { avg: '--', min: '--', max: '--' };
-    const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
-    return {
-      avg: pct(avg),
-      min: pct(Math.min(...values)),
-      max: pct(Math.max(...values)),
-    };
-  }, [yearRows]);
-
-  const sourceMeta = dataInfo?.source_meta || {};
-  const officialYearCount = yearRows.length;
-  const variableCount = OFFICIAL_VARIABLE_GROUPS.reduce((sum, group) => sum + group.variables.length, 0);
-  const readinessValue = sourceMeta.effective_source === 'default' ? '100%' : t('explore.defaultDataset.readinessFallback');
+  const sourceCoverageStats = useMemo(() => buildSourceCoverageStats(dataInfo), [dataInfo]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <GlowCard style={{ padding: '20px 22px' }}>
-        <div
-          style={{
-            fontSize: 'calc(11px * var(--font-scale, 1))',
-            fontWeight: 700,
-            color: C.blue,
-            fontFamily: "'Orbitron', sans-serif",
-            letterSpacing: 2,
-            marginBottom: 8,
-          }}
-        >
-          {t('explore.defaultDataset.header')}
-        </div>
-        <div style={{ fontSize: 'calc(13px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8, maxWidth: 1050 }}>
-          {t('explore.defaultDataset.headerDesc')}
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-          {HERO_TAG_KEYS.map((tagKey) => (
-            <span
-              key={tagKey}
-              style={{
-                fontSize: 'calc(10px * var(--font-scale, 1))',
-                color: C.blue,
-                padding: '4px 10px',
-                borderRadius: 999,
-                border: '1px solid rgba(74,158,255,0.25)',
-                background: 'rgba(74,158,255,0.08)',
-              }}
-            >
-              {t(`explore.defaultDataset.heroTags.${tagKey}`)}
-            </span>
-          ))}
-        </div>
-      </GlowCard>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <OfficialSourceSituationGrid
+        loading={loading}
+        error={error}
+        onRetry={load}
+        sourceCoverageStats={sourceCoverageStats}
+        t={t}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-        <MetricCard
-          eyebrow={t('explore.defaultDataset.metricCoverageEyebrow')}
-          value={officialYearCount}
-          label={t('explore.defaultDataset.metricCoverageLabel')}
-          desc={t('explore.defaultDataset.metricCoverageDesc')}
-          accent={C.blue}
-        />
-        <MetricCard
-          eyebrow={t('explore.defaultDataset.metricGridEyebrow')}
-          value="5° x 5°"
-          label={t('explore.defaultDataset.metricGridLabel')}
-          desc={t('explore.defaultDataset.metricGridDesc')}
-          accent={C.green}
-        />
-        <MetricCard
-          eyebrow={t('explore.defaultDataset.metricVariableEyebrow')}
-          value={variableCount}
-          label={t('explore.defaultDataset.metricVariableLabel')}
-          desc={t('explore.defaultDataset.metricVariableDesc')}
-          accent={C.mars}
-        />
-        <MetricCard
-          eyebrow={t('explore.defaultDataset.metricReadinessEyebrow')}
-          value={readinessValue}
-          label={t('explore.defaultDataset.metricReadinessLabel')}
-          desc={t('explore.defaultDataset.metricReadinessDesc')}
-          accent="#f59e0b"
-        />
-      </div>
-
-      <GlowCard style={{ padding: '18px 20px' }}>
-        <div
-          style={{
-            fontSize: 'calc(11px * var(--font-scale, 1))',
-            fontWeight: 700,
-            color: C.blue,
-            fontFamily: "'Orbitron', sans-serif",
-            letterSpacing: 2,
-            marginBottom: 14,
-          }}
-        >
-          {t('explore.defaultDataset.sourceTitle')}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14 }}>
-          {OFFICIAL_SOURCE_CARDS.map((source) => (
-            <SourceCard
-              key={source.key}
-              title={source.title}
-              subtitle={t(`explore.defaultDataset.${source.subtitleKey}`)}
-              tags={source.tagKeys.map((tagKey) => t(`explore.defaultDataset.sourceTags.${tagKey}`))}
-              body={t(`explore.defaultDataset.${source.bodyKey}`)}
-              accent={source.accent}
-            />
-          ))}
-        </div>
-      </GlowCard>
-
-      <GlowCard style={{ padding: 20 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 14,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              fontWeight: 700,
-              color: C.blue,
-              fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: 2,
-            }}
-          >
-            {t('explore.defaultDataset.listTitle')}
-          </div>
-          {!loading && (
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30 }}>
-              <span>{t('explore.defaultDataset.yearCount', { n: yearRows.length })}</span>
-              <span>{`${t('explore.defaultDataset.coverageAvg')}: ${lsCoverageStats.avg}`}</span>
-              <span>{`${t('explore.defaultDataset.coverageRange')}: ${lsCoverageStats.min} - ${lsCoverageStats.max}`}</span>
-            </div>
-          )}
-        </div>
-
-        {loading && <LoadingBox h={170} label={t('common.loading')} />}
-
-        {!loading && error && (
-          <div
-            style={{
-              border: `1px dashed ${C.border}`,
-              borderRadius: 12,
-              padding: '20px 16px',
-              textAlign: 'center',
-              color: C.mars,
-              fontSize: 'calc(12px * var(--font-scale, 1))',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <span>{error}</span>
-            <button
-              onClick={load}
-              style={{
-                border: `1px solid ${C.border}`,
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: 8,
-                color: C.ice60,
-                fontSize: 'calc(12px * var(--font-scale, 1))',
-                padding: '5px 12px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              {t('common.retry')}
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && yearRows.length === 0 && (
-          <div
-            style={{
-              border: `1px dashed ${C.border}`,
-              borderRadius: 12,
-              padding: '26px 14px',
-              textAlign: 'center',
-              color: C.ice30,
-              fontSize: 'calc(12px * var(--font-scale, 1))',
-            }}
-          >
-            {t('common.noData')}
-          </div>
-        )}
-
-        {!loading && !error && yearRows.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 14 }}>
-            {yearRows.map((row) => (
-              <YearCoverageCard key={row.year} row={row} t={t} />
-            ))}
-          </div>
-        )}
-      </GlowCard>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 0.8fr)', gap: 16 }}>
-        <GlowCard style={{ padding: '16px 20px' }}>
-          <div
-            style={{
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              fontWeight: 700,
-              color: C.blue,
-              fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: 2,
-              marginBottom: 10,
-            }}
-          >
-            {t('explore.defaultDataset.variableTitle')}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-            {OFFICIAL_VARIABLE_GROUPS.map((group) => (
-              <VariableGroupCard key={group.key} group={group} t={t} />
-            ))}
-          </div>
-          <div style={{ marginTop: 12, fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.8 }}>
-            {t('explore.defaultDataset.variableDesc')}
-          </div>
-        </GlowCard>
-
-        <GlowCard style={{ padding: '16px 20px' }}>
-          <div
-            style={{
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              fontWeight: 700,
-              color: C.blue,
-              fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: 2,
-              marginBottom: 10,
-            }}
-          >
-            {t('explore.defaultDataset.capabilityTitle')}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            {OFFICIAL_CAPABILITY_TAG_KEYS.map((name) => (
-              <span
-                key={name}
-                style={{
-                  fontSize: 'calc(10px * var(--font-scale, 1))',
-                  color: C.ice60,
-                  padding: '5px 10px',
-                  borderRadius: 999,
-                  border: `1px solid ${C.border}`,
-                  background: 'rgba(255,255,255,0.03)',
-                }}
-              >
-                {t(`explore.defaultDataset.capabilityTags.${name}`)}
-              </span>
-            ))}
-          </div>
-          <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.85 }}>
-            {t('explore.defaultDataset.capabilityDesc')}
-          </div>
-        </GlowCard>
-      </div>
+      <OfficialCoverageSummary loading={loading} sourceCoverageStats={sourceCoverageStats} t={t} />
     </div>
   );
 }

@@ -72,8 +72,8 @@ const DataOverviewPageContent = () => {
   const { setVideoRef, error: gestureError, setOnGesture, setOnLandmarks } = useHandTracking(gestureEnabled);
 
   // Keep gesture capture window compact to reduce scene occlusion.
-  const GESTURE_WINDOW_WIDTH = 190;
-  const GESTURE_WINDOW_HEIGHT = 142;
+  const GESTURE_WINDOW_WIDTH = 138;
+  const GESTURE_WINDOW_HEIGHT = 96;
 
   useEffect(() => {
     setOnLandmarks((landmarks) => {
@@ -86,12 +86,12 @@ const DataOverviewPageContent = () => {
 
       ctx.fillStyle = C.mars;
       ctx.strokeStyle = C.blue;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.4;
 
       for (const hand of landmarks) {
         for (const point of hand) {
           ctx.beginPath();
-          ctx.arc(point.x * canvas.width, point.y * canvas.height, 3, 0, 2 * Math.PI);
+          ctx.arc(point.x * canvas.width, point.y * canvas.height, 2.2, 0, 2 * Math.PI);
           ctx.fill();
         }
 
@@ -400,24 +400,29 @@ const DataOverviewPageContent = () => {
       </div>
 
       {gestureEnabled && (
-        <div style={{
+        <div className="gesture-capture-hud" title={gestureError || gestureStatus?.text || t('overview.controls.cameraTracking')} style={{
           position: 'fixed',
-          bottom: '116px',
-          left: `${leftPanelWidth + 46}px`,
+          top: '82px',
+          left: `${leftPanelWidth + 18}px`,
           width: `${GESTURE_WINDOW_WIDTH}px`,
           height: `${GESTURE_WINDOW_HEIGHT}px`,
-          zIndex: 2000,
-          borderRadius: '14px',
+          zIndex: 1450,
+          borderRadius: '12px',
           overflow: 'hidden',
-          border: `1px solid ${C.borderStrong}`,
-          boxShadow: isLight ? '0 14px 28px rgba(15,23,42,0.14)' : '0 18px 36px rgba(0,0,0,0.34)',
-          background: isLight ? 'rgba(255,255,255,0.90)' : 'rgba(8,12,18,0.82)',
-          backdropFilter: 'blur(12px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
+          border: `1px solid ${gestureError ? C.mars : C.borderStrong}`,
+          boxShadow: isLight ? '0 10px 22px rgba(15,23,42,0.10)' : '0 12px 28px rgba(0,0,0,0.24)',
+          background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(8,12,18,0.50)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          opacity: gestureError ? 0.96 : 0.76,
+          transition: 'opacity 0.2s ease, transform 0.2s ease',
         }}>
           {!gestureError && (
             <>
-              <div style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.5 }}>
+              <div style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.42 }}>
                 <video
                   ref={setVideoRef}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
@@ -434,9 +439,23 @@ const DataOverviewPageContent = () => {
             </>
           )}
           <div style={{
-            position: 'absolute', top: '10px', left: '10px', background: isLight ? 'rgba(255,255,255,0.92)' : 'rgba(12,18,28,0.82)',
-            padding: '4px 8px', borderRadius: '999px', color: gestureStatus?.accent || C.ice, fontSize: 'calc(10px * var(--font-scale, 1))',
-            fontWeight: 600, fontFamily: 'var(--font-body)', zIndex: 3, border: `1px solid ${C.borderStrong}`
+            position: 'absolute',
+            left: 7,
+            right: 7,
+            bottom: 6,
+            background: isLight ? 'rgba(255,255,255,0.82)' : 'rgba(12,18,28,0.64)',
+            padding: '3px 6px',
+            borderRadius: '999px',
+            color: gestureStatus?.accent || C.ice,
+            fontSize: 'calc(8px * var(--font-scale, 1))',
+            fontWeight: 700,
+            fontFamily: 'var(--font-body)',
+            lineHeight: 1,
+            zIndex: 3,
+            border: `1px solid ${C.border}`,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}>
             {gestureError ? t('overview.controls.gestureErrorTitle') : (gestureStatus?.text || t('overview.controls.cameraTracking'))}
           </div>
@@ -448,12 +467,13 @@ const DataOverviewPageContent = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '36px 14px 14px',
+              padding: '24px 8px 8px',
               textAlign: 'center',
               color: isLight ? '#7f1d1d' : '#fecaca',
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              lineHeight: 1.6,
-              background: isLight ? 'rgba(255,245,245,0.92)' : 'rgba(46,10,12,0.76)',
+              fontSize: 'calc(8px * var(--font-scale, 1))',
+              lineHeight: 1.35,
+              background: isLight ? 'rgba(255,245,245,0.86)' : 'rgba(46,10,12,0.68)',
+              overflow: 'hidden',
             }}>
               {gestureError}
             </div>

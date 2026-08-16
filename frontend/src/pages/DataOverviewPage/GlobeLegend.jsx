@@ -40,8 +40,8 @@ export default function GlobeLegend({ ozoneData, sceneModel }) {
 
   if (!ozoneData || typeof ozoneData.maxVal === 'undefined') return null;
 
-  const panelWidth = gestureEnabled ? 176 : 196;
-  const panelBottom = gestureEnabled ? 282 : 124;
+  const panelWidth = gestureEnabled ? 150 : 158;
+  const panelBottom = 88;
 
   const pointsCount = ozoneData.points?.length || 0;
   const maxVal = convertByVariable(ozoneData.maxVal || 0, variable, settings.units).toFixed(3);
@@ -79,90 +79,116 @@ export default function GlobeLegend({ ozoneData, sceneModel }) {
 
   return (
     <div
+      className="overview-globe-legend-compact"
       style={{
         position: 'fixed',
         bottom: `${panelBottom}px`,
-        left: `${leftPanelWidth + 20}px`,
+        left: `${leftPanelWidth + 14}px`,
         width: `${panelWidth}px`,
         zIndex: 1000,
         pointerEvents: 'none',
-        transition: 'bottom 0.2s ease, width 0.2s ease',
+        transition: 'left 0.2s ease, bottom 0.2s ease, width 0.2s ease',
       }}
     >
-      <GlowCard style={{ padding: '12px', background: isLight ? 'rgba(255,255,255,0.88)' : 'rgba(10,14,23,0.58)' }}>
+      <GlowCard style={{ padding: '8px', background: isLight ? 'rgba(255,255,255,0.74)' : 'rgba(10,14,23,0.44)' }}>
         <div
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: 10,
+            gap: 8,
+            marginBottom: 6,
+            minWidth: 0,
           }}
         >
-          <div>
-            <div style={{ color: C.ice50, fontSize: 'calc(10px * var(--font-scale, 1))', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              {isZh ? '图例' : 'Legend'}
-            </div>
-            <div style={{ color: C.ice60, fontSize: 'calc(10px * var(--font-scale, 1))', marginTop: 3 }}>
+          <div style={{ minWidth: 0 }}>
+            <div
+              title={`${varLabel} (${unitLabel})`}
+              style={{
+                color: C.ice60,
+                fontSize: 'calc(9px * var(--font-scale, 1))',
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {varLabel} ({unitLabel})
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: C.ice40, fontSize: 'calc(9px * var(--font-scale, 1))' }}>
-              {isZh ? '数据点' : 'Points'}
-            </div>
-            <div style={{ color: C.mars, fontSize: 'calc(13px * var(--font-scale, 1))', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
-              {pointsCount}
-            </div>
+          <div
+            title={isZh ? `${pointsCount} 个数据点` : `${pointsCount} points`}
+            style={{
+              padding: '2px 5px',
+              borderRadius: 999,
+              border: `1px solid ${C.border}`,
+              color: C.mars,
+              fontSize: 'calc(8px * var(--font-scale, 1))',
+              fontWeight: 800,
+              fontFamily: 'var(--font-display)',
+              flexShrink: 0,
+              lineHeight: 1,
+            }}
+          >
+            {pointsCount}
           </div>
         </div>
 
         {sceneModel?.legendMode === 'sources' ? (
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div className="source-dot-strip" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
             {sourceItems.map((item) => {
               const active = activeSourceIds.has(item.id);
               return (
-                <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, opacity: active ? 1 : 0.36 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.ice60, fontSize: 'calc(10px * var(--font-scale, 1))', fontWeight: 700 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 999, background: item.color, boxShadow: `0 0 10px ${item.color}88` }} />
-                    {item.label}
-                  </span>
-                  <span style={{ color: active ? C.ice40 : C.ice30, fontSize: 'calc(9px * var(--font-scale, 1))' }}>
-                    {active ? (isZh ? '可用' : 'Available') : (isZh ? '无数据' : 'No data')}
-                  </span>
-                </div>
+                <span
+                  key={item.id}
+                  title={`${item.label} ${active ? (isZh ? '可用' : 'available') : (isZh ? '无数据' : 'no data')}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    color: C.ice50,
+                    fontSize: 'calc(8px * var(--font-scale, 1))',
+                    fontWeight: 800,
+                    opacity: active ? 1 : 0.34,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: item.color, boxShadow: active ? `0 0 8px ${item.color}88` : 'none' }} />
+                  {item.label}
+                </span>
               );
             })}
           </div>
         ) : isValidation ? (
-          <div style={{ display: 'grid', gap: 9 }}>
+          <div style={{ display: 'grid', gap: 5 }}>
             <div
               style={{
-                height: 10,
+                height: 7,
                 borderRadius: 999,
                 border: `1px solid ${C.border}`,
                 background: diffGradient,
               }}
             />
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: C.ice60, fontSize: 'calc(9px * var(--font-scale, 1))', fontWeight: 700 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: C.ice50, fontSize: 'calc(8px * var(--font-scale, 1))', fontWeight: 700 }}>
               <span>{isZh ? 'MCD 偏低' : 'MCD lower'}</span>
               <span>{isZh ? 'MCD 偏高' : 'MCD higher'}</span>
             </div>
             {validation ? (
               <>
-                <div style={{ color: C.ice60, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
+                <div style={{ color: C.ice50, fontSize: 'calc(8px * var(--font-scale, 1))', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {isZh ? 'NOMAD 稀疏验证' : 'NOMAD sparse validation'} · Ls {formatMetric(validation.matched_ls, 1)}°
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4 }}>
                   {validationMetrics.map(([label, value]) => (
-                    <div key={label} style={{ padding: '6px 7px', borderRadius: 8, background: 'rgba(255,255,255,0.045)', border: `1px solid ${C.border}` }}>
-                      <div style={{ color: C.ice30, fontSize: 'calc(8px * var(--font-scale, 1))', fontWeight: 700 }}>{label}</div>
-                      <div style={{ color: label === 'Bias' ? C.blue : C.ice, fontSize: 'calc(10px * var(--font-scale, 1))', fontWeight: 800, marginTop: 2 }}>{value}</div>
+                    <div key={label} style={{ padding: '4px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.ice30, fontSize: 'calc(7px * var(--font-scale, 1))', fontWeight: 700 }}>{label}</div>
+                      <div style={{ color: label === 'Bias' ? C.blue : C.ice, fontSize: 'calc(8px * var(--font-scale, 1))', fontWeight: 800, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
                     </div>
                   ))}
                 </div>
               </>
             ) : (
-              <div style={{ color: C.ice40, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.5 }}>
+              <div style={{ color: C.ice40, fontSize: 'calc(8px * var(--font-scale, 1))', lineHeight: 1.35 }}>
                 {isZh ? '当前 Ls 附近暂无 NOMAD 匹配点。' : 'No NOMAD match near the current Ls.'}
               </div>
             )}
@@ -171,11 +197,11 @@ export default function GlobeLegend({ ozoneData, sceneModel }) {
           <>
             <div
               style={{
-                height: 10,
+                height: 7,
                 borderRadius: 999,
                 border: `1px solid ${C.border}`,
                 background: sceneModel?.legendMode === 'diff' ? diffGradient : horizontalGradient,
-                marginBottom: 8,
+                marginBottom: 5,
               }}
             />
 
@@ -184,7 +210,7 @@ export default function GlobeLegend({ ozoneData, sceneModel }) {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                fontSize: 'calc(9px * var(--font-scale, 1))',
+                fontSize: 'calc(8px * var(--font-scale, 1))',
                 color: C.ice,
                 fontWeight: 700,
               }}

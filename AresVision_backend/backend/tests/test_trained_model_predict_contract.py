@@ -292,6 +292,35 @@ def test_trained_model_request_returns_model_file_detail_when_weight_disappears(
         raise AssertionError("Expected HTTPException for missing model weight")
 
 
+def test_predict_metrics_wraps_unexpected_training_errors():
+    class FailingMetricsInferenceService:
+        async def task_test_set_metrics(self, **kwargs):
+            raise RuntimeError("NetCDF: Can't open HDF5 attribute")
+
+    body = PredictRequest(
+        training_task_id=42,
+        selected_variables=["U_Wind"],
+        horizon=1,
+        ls_start=90,
+        mars_year=27,
+    )
+
+    try:
+        asyncio.run(
+            predict.get_eval_metrics(
+                _request(FailingMetricsInferenceService()),
+                body,
+                data_source="default",
+                current_user=AUTHENTICATED_USER,
+            )
+        )
+    except predict.HTTPException as exc:
+        assert exc.status_code == 500
+        assert "NetCDF: Can't open HDF5 attribute" in exc.detail
+    else:
+        raise AssertionError("Expected HTTPException for metrics failure")
+
+
 async def test_permutation_importance_uses_training_task_service_when_task_id_is_present():
     service = FakeTrainingInferenceService()
 

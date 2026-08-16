@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import torch
 import numpy as np
 import glob
@@ -27,6 +28,8 @@ from training_backbones.model_zoo import (
     normalize_model_architecture,
     normalize_use_sphere,
 )
+
+_NETCDF_READ_LOCK = threading.RLock()
 
 
 class InferenceService:
@@ -1366,10 +1369,13 @@ class InferenceService:
         def natural_sort_key(s): return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', str(s))]
         file_list = sorted(glob.glob(str(openmars_dir / "*.nc")), key=natural_sort_key)
         for f in file_list:
-            ds = nc.Dataset(f)
-            o3_list.append(ds.variables['o3col'][:])
-            om_ls_list.append(ds.variables['Ls'][:] if 'Ls' in ds.variables else ds.variables['ls'][:])
-            ds.close()
+            with _NETCDF_READ_LOCK:
+                ds = nc.Dataset(f)
+                try:
+                    o3_list.append(ds.variables['o3col'][:])
+                    om_ls_list.append(ds.variables['Ls'][:] if 'Ls' in ds.variables else ds.variables['ls'][:])
+                finally:
+                    ds.close()
         y_raw = np.concatenate(o3_list, axis=0)
         om_ls_raw = np.concatenate(om_ls_list, axis=0)
 
@@ -1381,17 +1387,20 @@ class InferenceService:
             mcd_ls = []
             for f_nc in sorted(mcd_dir.glob("*.nc"), key=natural_sort_key):
                 if not f_nc.exists(): continue
-                ds = nc.Dataset(f_nc, 'r')
-                for var_name, sn in used_mcd_vars:
-                    d = ds.variables[var_name][:]
-                    mcd_data[sn].append(d.reshape(d.shape[0]*d.shape[1], d.shape[2], d.shape[3]))
-                ls_t = ds.variables['Ls'][:] if 'Ls' in ds.variables else ds.variables['ls'][:]
-                s_d, h_d = ds.variables[used_mcd_vars[0][0]].shape[:2]
-                ls_e = np.zeros(s_d * h_d)
-                for i in range(s_d):
-                    ls_e[i*h_d:(i+1)*h_d] = np.linspace(ls_t[i], ls_t[i+1] if i < s_d-1 else ls_t[i]+0.5, h_d, endpoint=False)
-                mcd_ls.append(ls_e % 360.0)
-                ds.close()
+                with _NETCDF_READ_LOCK:
+                    ds = nc.Dataset(f_nc, 'r')
+                    try:
+                        for var_name, sn in used_mcd_vars:
+                            d = ds.variables[var_name][:]
+                            mcd_data[sn].append(d.reshape(d.shape[0]*d.shape[1], d.shape[2], d.shape[3]))
+                        ls_t = ds.variables['Ls'][:] if 'Ls' in ds.variables else ds.variables['ls'][:]
+                        s_d, h_d = ds.variables[used_mcd_vars[0][0]].shape[:2]
+                        ls_e = np.zeros(s_d * h_d)
+                        for i in range(s_d):
+                            ls_e[i*h_d:(i+1)*h_d] = np.linspace(ls_t[i], ls_t[i+1] if i < s_d-1 else ls_t[i]+0.5, h_d, endpoint=False)
+                        mcd_ls.append(ls_e % 360.0)
+                    finally:
+                        ds.close()
             
             def unwrap(ls_in):
                 out = np.copy(ls_in); off = 0

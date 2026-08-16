@@ -302,6 +302,71 @@ def test_expired_lease_is_reclaimed(tmp_path):
     assert final == ("ready", None, True)
 
 
+def test_abandoned_active_lease_is_reclaimed_after_wait_budget(tmp_path):
+    async def run():
+        from datetime import datetime, timedelta, timezone
+
+        engine, sessions, user_a, _user_b, task, data_dirs = (
+            await _database(tmp_path)
+        )
+        service = PredictionAnalysisCacheService(
+            sessions,
+            lease_seconds=60.0,
+            poll_seconds=0.01,
+            wait_timeout_seconds=0.03,
+        )
+        await service.get_or_compute(
+            user_id=user_a,
+            task=task,
+            analysis_type="metrics",
+            request_params={"horizon": 3},
+            data_dirs=data_dirs,
+            compute=lambda: _metric(1.0),
+        )
+        async with sessions() as session:
+            row = (
+                await session.execute(select(PredictionAnalysisCache))
+            ).scalar_one()
+            row.status = "computing"
+            row.payload = None
+            row.lease_token = "abandoned-token"
+            row.lease_expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=5
+            )
+            await session.commit()
+
+        calls = 0
+
+        async def compute():
+            nonlocal calls
+            calls += 1
+            return _metric(5.0)
+
+        result = await asyncio.wait_for(
+            service.get_or_compute(
+                user_id=user_a,
+                task=task,
+                analysis_type="metrics",
+                request_params={"horizon": 3},
+                data_dirs=data_dirs,
+                compute=compute,
+            ),
+            timeout=0.5,
+        )
+        async with sessions() as session:
+            row = (
+                await session.execute(select(PredictionAnalysisCache))
+            ).scalar_one()
+            final = (row.status, row.lease_token, row.payload is not None)
+        await engine.dispose()
+        return calls, result, final
+
+    calls, result, final = asyncio.run(run())
+    assert calls == 1
+    assert result == _metric(5.0)
+    assert final == ("ready", None, True)
+
+
 def test_compute_failure_is_not_cached(tmp_path):
     async def run():
         engine, sessions, user_a, _user_b, task, data_dirs = (

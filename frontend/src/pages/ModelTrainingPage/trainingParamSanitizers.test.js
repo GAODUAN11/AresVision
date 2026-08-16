@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   buildTrainingHyperparameters,
+  getTransferFreezeModes,
   getModelStructureParamLabel,
   sanitizeNonNegativeInteger,
   sanitizePositiveInteger,
@@ -267,6 +268,38 @@ test('adds transfer learning parameters when a task source is enabled', () => {
   assert.equal(hyperparameters.transfer_load_mode, 'strict');
   assert.equal(hyperparameters.freeze_mode, 'backbone');
   assert.equal(hyperparameters.finetune_learning_rate, 0.0001);
+});
+
+test('limits uploaded model transfer freeze mode to none', () => {
+  assert.deepEqual(getTransferFreezeModes('uploaded'), ['none']);
+  assert.deepEqual(getTransferFreezeModes('official'), ['none', 'backbone', 'head']);
+
+  const hyperparameters = buildTrainingHyperparameters({
+    epochs: 10,
+    batchSize: 32,
+    learningRate: 0.001,
+    hiddenDims: [64, 64, 64],
+    windowValue: 3,
+    horizon: 3,
+    earlyStoppingPatience: 0,
+    seed: 11,
+    selectedChannels: ['U'],
+    channelOrder: ['U', 'V', 'D', 'S', 'T'],
+    modelArchitecture: 'predrnnv2',
+    modelSource: 'uploaded',
+    useSphere: false,
+    architectureParamsByModel: {},
+    transferLearning: {
+      enabled: true,
+      sourceType: 'task',
+      sourceTaskId: '12',
+      weightId: '',
+      freezeMode: 'head',
+      finetuneLearningRate: '0.0001',
+    },
+  });
+
+  assert.equal(hyperparameters.freeze_mode, 'none');
 });
 
 test('omits transfer learning parameters when disabled', () => {

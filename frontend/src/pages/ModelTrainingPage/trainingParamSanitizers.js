@@ -4,6 +4,7 @@ const OPEN_INTERVAL_FLOAT_FIELDS = new Set(['initial_history_weight', 'initial_t
 const THREE_VALUE_INTEGER_LIST_FIELDS = new Set(['patch_size', 'cuboid_size']);
 export const RECURRENT_MODEL_ARCHITECTURES = ['predrnnv2', 'predrnnpp', 'convlstm'];
 export const TRANSFER_FREEZE_MODES = ['none', 'backbone', 'head'];
+export const UPLOADED_MODEL_TRANSFER_FREEZE_MODES = ['none'];
 export const TRAINING_DATASET_OPENMARS_MCD = 'openmars_mcd';
 export const TRAINING_DATASET_MCD_OVERVIEW = 'mcd_overview';
 export const TRAINING_DATASET_IDS = [TRAINING_DATASET_OPENMARS_MCD, TRAINING_DATASET_MCD_OVERVIEW];
@@ -388,6 +389,17 @@ export function sanitizeTransferFreezeMode(value) {
   return TRANSFER_FREEZE_MODES.includes(normalized) ? normalized : 'none';
 }
 
+export function getTransferFreezeModes(modelSource) {
+  return String(modelSource || '').toLowerCase() === 'uploaded'
+    ? UPLOADED_MODEL_TRANSFER_FREEZE_MODES
+    : TRANSFER_FREEZE_MODES;
+}
+
+export function sanitizeTransferFreezeModeForModelSource(value, modelSource) {
+  const normalized = sanitizeTransferFreezeMode(value);
+  return getTransferFreezeModes(modelSource).includes(normalized) ? normalized : 'none';
+}
+
 export function sanitizeTrainingDataset(value) {
   const normalized = String(value || TRAINING_DATASET_OPENMARS_MCD).toLowerCase();
   return TRAINING_DATASET_IDS.includes(normalized) ? normalized : TRAINING_DATASET_OPENMARS_MCD;
@@ -442,6 +454,7 @@ export function buildTrainingHyperparameters({
   selectedChannels,
   channelOrder,
   modelArchitecture,
+  modelSource = 'official',
   useSphere,
   architectureParamsByModel = {},
   transferLearning = null,
@@ -476,7 +489,10 @@ export function buildTrainingHyperparameters({
     );
     hyperparameters.transfer_weight_id = String(transferLearning?.weightId || '').trim();
     hyperparameters.transfer_load_mode = 'strict';
-    hyperparameters.freeze_mode = sanitizeTransferFreezeMode(transferLearning?.freezeMode);
+    hyperparameters.freeze_mode = sanitizeTransferFreezeModeForModelSource(
+      transferLearning?.freezeMode,
+      modelSource
+    );
     hyperparameters.finetune_learning_rate = sanitizePositiveNumber(
       transferLearning?.finetuneLearningRate,
       sanitizePositiveNumber(learningRate, 0.001) * 0.1

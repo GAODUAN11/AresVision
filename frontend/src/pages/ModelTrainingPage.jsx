@@ -622,8 +622,8 @@ export default function ModelTrainingPage() {
         ? '使用当前默认训练数据，OpenMARS 臭氧目标与 MCD 驱动变量融合。'
         : 'Use the current default fused dataset: OpenMARS ozone targets with MCD drivers.',
       datasetHintMcdOverview: isZh
-        ? '使用 data/mcd_overview 中的整体 MCD overview 数据，覆盖 MY24-MY35。'
-        : 'Use the full MCD overview corpus from data/mcd_overview, covering MY24-MY35.',
+        ? '使用 data/MCD_Output_global_10m_ls_lst 中的原始 3 小时 MCD 数据，覆盖 MY24-MY35。'
+        : 'Use raw 3-hour MCD data from data/MCD_Output_global_10m_ls_lst, covering MY24-MY35.',
       sourceDefault: getTrainingSourceLabel('default', { isZh }),
       sourceHintDefault: isZh
         ? '训练数据由管理员在服务器后台维护，普通用户不再切换自有融合数据。'

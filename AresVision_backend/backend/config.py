@@ -48,6 +48,7 @@ TRAINING_RESULTS_DIR = BASE_DIR / "models" / "training_results"
 TRAINING_LOGS_DIR = BASE_DIR / "models" / "training_logs"
 PERF_CACHE_DIR = DATA_DIR / "perf_cache"
 PERSONAL_CACHE_DIR = DATA_DIR / "personal_cache"
+MCD_CACHE_DIR = DATA_DIR / "mcd_cache"
 
 # ─── 网格 ───
 SUPPORTED_MARS_YEARS = [27, 28]
@@ -133,7 +134,7 @@ PENDING_REVIEW_DIR = DATA_DIR / "pending_review"
 APPROVED_DIR       = DATA_DIR / "approved"
 USER_MODELS_DIR = DATA_DIR / "user_models"
 TRAINING_WEIGHTS_DIR = DATA_DIR / "training_weights"
-MAX_UPLOAD_SIZE_MB = 200
+MAX_UPLOAD_SIZE_MB = int(os.getenv("ARESVISION_MAX_UPLOAD_SIZE_MB", "512"))
 ALLOWED_NC_EXTENSIONS = [".nc", ".nc4", ".netcdf"]
 MAX_USER_MODEL_SIZE_KB = int(os.getenv("MAX_USER_MODEL_SIZE_KB", "256"))
 ALLOWED_USER_MODEL_EXTENSIONS = [".py"]

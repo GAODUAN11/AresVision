@@ -41,6 +41,8 @@ from services.inference_service import InferenceService
 from services.ai_service import AIService
 from services.copilot_service import CopilotService
 from services.upload_service import UploadService
+from services.mcd_cache_service import McdCacheService
+from services.official_mcd_source_interface import DisabledOfficialMcdSourcePublisher
 from services.user_model_service import UserModelService
 from services.training_weight_service import TrainingWeightService
 from services.user_data_service import UserDataService
@@ -139,11 +141,31 @@ async def lifespan(app: FastAPI):
     # 上传服务（依赖 data_service）
     upload_service = UploadService(data_service)
     app.state.upload_service = upload_service
+
+    mcd_cache_service = McdCacheService()
+    app.state.mcd_cache_service = mcd_cache_service
+    app.state.official_mcd_source_publisher = DisabledOfficialMcdSourcePublisher()
+    mcd_cache_event = asyncio.Event()
+
+    def enqueue_mcd_cache_job() -> None:
+        mcd_cache_event.set()
+
+    async def mcd_cache_worker() -> None:
+        while True:
+            await mcd_cache_event.wait()
+            mcd_cache_event.clear()
+            while await mcd_cache_service.run_next_pending_job():
+                await asyncio.sleep(0)
+
+    app.state.enqueue_mcd_cache_job = enqueue_mcd_cache_job
+    app.state.mcd_cache_worker_task = asyncio.create_task(mcd_cache_worker())
+    enqueue_mcd_cache_job()
+
     app.state.user_model_service = UserModelService(storage_root=USER_MODELS_DIR)
     app.state.training_weight_service = TrainingWeightService(storage_root=TRAINING_WEIGHTS_DIR)
 
     # 用户数据服务（按需读取用户上传的 .nc 文件）
-    user_data_service = UserDataService()
+    user_data_service = UserDataService(mcd_cache_service=mcd_cache_service)
     app.state.user_data_service = user_data_service
 
     # 数据源解析服务（默认/个人数据源切换 + 自动降级）
@@ -372,6 +394,11 @@ async def lifespan(app: FastAPI):
 
     # 关闭时清理
     logger.info("正在关闭服务...")
+    mcd_worker_task = getattr(app.state, "mcd_cache_worker_task", None)
+    if mcd_worker_task is not None:
+        mcd_worker_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await mcd_worker_task
     worker_task = getattr(app.state, "personal_cache_rebuild_worker_task", None)
     if worker_task is not None:
         worker_task.cancel()

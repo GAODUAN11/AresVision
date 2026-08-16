@@ -453,6 +453,8 @@ const zh = {
       },
       status: {
         valid:          '已验证',
+        cache_building: '缓存生成中',
+        cache_failed:   '缓存失败',
         invalid:        '校验失败',
         pending_review: '等待审核',
         approved:       '已通过审核',

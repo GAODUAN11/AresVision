@@ -40,6 +40,43 @@ def _enqueue_personal_cache_rebuild(request: Request | None, user_id: int | None
     return
 
 
+def _empty_cache_status() -> dict:
+    return {"jobs": [], "artifacts": []}
+
+
+def _success_payload(record: UploadRecord, result, cache_status: dict | None = None) -> dict:
+    status = "cache_building" if record.data_type == "mcd" else "valid"
+    return {
+        "upload_id": record.id,
+        "status": status,
+        "data_type": result.data_type,
+        "mars_year": result.mars_year,
+        "ls_range": [result.ls_start, result.ls_end],
+        "grid_size": [result.lat_points, result.lon_points],
+        "variables": result.variables,
+        "warnings": result.warnings,
+        "cache_status": cache_status or _empty_cache_status(),
+        "message": "文件已保存，缓存正在后台生成" if status == "cache_building" else "文件校验通过，数据已保存",
+    }
+
+
+def _upload_list_item(r: UploadRecord, cache_status: dict | None = None) -> dict:
+    return {
+        "id": r.id,
+        "filename": r.filename,
+        "data_type": r.data_type,
+        "mars_year": r.mars_year,
+        "ls_start": r.ls_start,
+        "ls_end": r.ls_end,
+        "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "file_size": r.file_size,
+        "is_public": r.is_public,
+        "validation_message": r.validation_message,
+        "cache_status": cache_status or _empty_cache_status(),
+    }
+
+
 async def _add_lineage_event(
     db,
     upload_id: int,
@@ -80,6 +117,7 @@ async def upload_nc_file(
             ),
         )
 
+    cache_status = _empty_cache_status()
     async with async_session_maker() as db:
         try:
             record, result = await _svc(request).process_upload(
@@ -111,6 +149,13 @@ async def upload_nc_file(
                     await request.app.state.data_governance_service.prime_quality_snapshot(record.id)
                 except Exception as exc:
                     logger.warning("precompute governance quality snapshot failed: %s", exc)
+                if result.data_type == "mcd":
+                    await request.app.state.mcd_cache_service.enqueue_upload(record.id)
+                    record.status = "cache_building"
+                    cache_status = await request.app.state.mcd_cache_service.get_cache_status(record.id)
+                    enqueue_cache_job = getattr(request.app.state, "enqueue_mcd_cache_job", None)
+                    if enqueue_cache_job:
+                        enqueue_cache_job()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         except OSError as exc:
@@ -118,17 +163,7 @@ async def upload_nc_file(
 
     if result.is_valid:
         _enqueue_personal_cache_rebuild(request, current_user.id)
-        return {
-            "upload_id": record.id,
-            "status": "valid",
-            "data_type": result.data_type,
-            "mars_year": result.mars_year,
-            "ls_range": [result.ls_start, result.ls_end],
-            "grid_size": [result.lat_points, result.lon_points],
-            "variables": result.variables,
-            "warnings": result.warnings,
-            "message": "文件校验通过，数据已保存",
-        }
+        return _success_payload(record, result, cache_status)
     return {
         "upload_id": record.id,
         "status": "invalid",
@@ -141,6 +176,7 @@ async def upload_nc_file(
 
 @router.get("/my-uploads")
 async def get_my_uploads(
+    request: Request,
     current_user: User = Depends(get_current_user),
 ):
     """获取当前用户的所有上传记录（需要认证）。"""
@@ -152,22 +188,30 @@ async def get_my_uploads(
         )
         rows = (await db.execute(stmt)).scalars().all()
 
-    return [
-        {
-            "id": r.id,
-            "filename": r.filename,
-            "data_type": r.data_type,
-            "mars_year": r.mars_year,
-            "ls_start": r.ls_start,
-            "ls_end": r.ls_end,
-            "status": r.status,
-            "created_at": r.created_at.isoformat(),
-            "file_size": r.file_size,
-            "is_public": r.is_public,
-            "validation_message": r.validation_message,
-        }
-        for r in rows
-    ]
+    result = []
+    for r in rows:
+        cache_status = _empty_cache_status()
+        if r.data_type == "mcd":
+            cache_status = await request.app.state.mcd_cache_service.get_cache_status(r.id)
+        result.append(_upload_list_item(r, cache_status))
+    return result
+
+
+@router.get("/{upload_id}/cache-status")
+async def get_upload_cache_status(
+    request: Request,
+    upload_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    async with async_session_maker() as db:
+        record = await db.get(UploadRecord, upload_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="上传记录不存在")
+    if record.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权访问此记录")
+    if record.data_type != "mcd":
+        return {"upload_id": upload_id, **_empty_cache_status()}
+    return await request.app.state.mcd_cache_service.get_cache_status(upload_id)
 
 
 # ─── DELETE /{upload_id} ─────────────────────────────────────────────────────
@@ -180,6 +224,7 @@ async def delete_upload(
 ):
     """删除指定上传记录及其文件（仅限本人或管理员）。"""
     target_user_id: int | None = None
+    should_delete_mcd_cache = False
     async with async_session_maker() as db:
         record = await db.get(UploadRecord, upload_id)
         if not record:
@@ -187,6 +232,7 @@ async def delete_upload(
         if record.user_id != current_user.id and current_user.role != "admin":
             raise HTTPException(status_code=403, detail="无权删除此记录")
         target_user_id = record.user_id
+        should_delete_mcd_cache = record.data_type == "mcd"
 
         # 删除文件目录（original.nc 所在的 upload_id 目录）
         file_dir = Path(record.file_path).parent
@@ -195,6 +241,11 @@ async def delete_upload(
                 shutil.rmtree(file_dir)
             except OSError as exc:
                 logger.warning("删除上传目录失败: %s", exc)
+        if should_delete_mcd_cache:
+            try:
+                await request.app.state.mcd_cache_service.delete_upload_cache(record.id, session=db)
+            except Exception as exc:
+                logger.warning("删除 MCD 缓存失败: %s", exc)
 
         await db.delete(record)
         await db.commit()
@@ -380,6 +431,15 @@ async def contribute_upload(
                 status_code=400,
                 detail="只有校验通过（valid）的文件才能贡献给网站",
             )
+        if record.data_type == "mcd":
+            cache_status = await request.app.state.mcd_cache_service.get_cache_status(record.id)
+            ready_types = {
+                item.get("cache_type")
+                for item in cache_status.get("artifacts", [])
+                if item.get("status") == "ready"
+            }
+            if not {"mcd_overview", "mcd_3h"}.issubset(ready_types):
+                raise HTTPException(status_code=400, detail="MCD 缓存尚未生成完成，暂不能贡献")
 
         # 拷贝到 pending_review/{record_id}/original.nc
         dest_dir = PENDING_REVIEW_DIR / str(record.id)

@@ -7,6 +7,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+MAIN_SOURCE = (BACKEND_DIR / "main.py").read_text(encoding="utf-8")
+
 from services.personal_data_source_service import PersonalDataSourceService  # noqa: E402
 from services.user_data_service import UserDataService  # noqa: E402
 
@@ -134,3 +136,14 @@ def test_raw_upload_cache_rebuild_hook_is_noop():
     upload_router._enqueue_personal_cache_rebuild(request, 7)
 
     assert called == []
+
+
+def test_mcd_cache_worker_runs_pending_jobs_from_lifespan():
+    assert "from services.mcd_cache_service import McdCacheService" in MAIN_SOURCE
+    assert "app.state.mcd_cache_service = mcd_cache_service" in MAIN_SOURCE
+    assert "async def mcd_cache_worker()" in MAIN_SOURCE
+    assert "await mcd_cache_service.run_next_pending_job()" in MAIN_SOURCE
+    assert "app.state.enqueue_mcd_cache_job = enqueue_mcd_cache_job" in MAIN_SOURCE
+    assert "UserDataService(mcd_cache_service=mcd_cache_service)" in MAIN_SOURCE
+    assert "from services.official_mcd_source_interface import DisabledOfficialMcdSourcePublisher" in MAIN_SOURCE
+    assert "app.state.official_mcd_source_publisher = DisabledOfficialMcdSourcePublisher()" in MAIN_SOURCE

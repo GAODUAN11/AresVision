@@ -451,6 +451,8 @@ const en = {
       },
       status: {
         valid:          'Validated',
+        cache_building: 'Cache building',
+        cache_failed:   'Cache failed',
         invalid:        'Invalid',
         pending_review: 'Pending Review',
         approved:       'Approved',

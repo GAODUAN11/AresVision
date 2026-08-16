@@ -94,6 +94,14 @@ test('personal data queue and detail default views stay compact', () => {
   assert.doesNotMatch(myDataTab, /\{viewingCtx\.datasetState\.desc\}/);
 });
 
+test('personal data distinguishes raw source from generated caches', () => {
+  assert.match(myDataTab, /cache_status/);
+  assert.match(myDataTab, /raw MCD 3h|原始 MCD 3h/);
+  assert.match(myDataTab, /cache_building/);
+  assert.match(myDataTab, /mcd_overview/);
+  assert.match(myDataTab, /mcd_3h/);
+});
+
 test('admin inline workspace uses compact panel sizing', () => {
   assert.match(adminReviewPanel, /adminWorkspaceMinHeight/);
   assert.doesNotMatch(adminReviewPanel, /minHeight:\s*640/);

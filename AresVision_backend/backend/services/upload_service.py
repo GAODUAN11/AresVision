@@ -167,7 +167,7 @@ class UploadService:
     ) -> ValidationResult:
         """在已打开的 Dataset 上执行数据总览上传契约校验。"""
 
-        contract = validate_overview_upload_dataset(ds, filename)
+        contract = validate_overview_upload_dataset(ds, filename, allow_ready_mcd=False)
         result.is_valid = contract.is_valid
         result.data_type = contract.data_type
         result.mars_year = contract.mars_year

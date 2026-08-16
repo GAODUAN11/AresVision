@@ -92,6 +92,12 @@ function createCopy(isZh) {
     advancedHide: isZh ? '收起高级详情' : 'Hide advanced details',
     personalRoleTitle: isZh ? '三类个人数据' : 'Three Personal Source Types',
     uploadStatusTitle: isZh ? '上传状态' : 'Upload Status',
+    rawMcdSource: isZh ? '原始 MCD 3h' : 'raw MCD 3h',
+    cacheBuilding: isZh ? '缓存生成中' : 'Cache building',
+    cacheReady: isZh ? '缓存完成' : 'Cache ready',
+    cacheFailed: isZh ? '缓存失败' : 'Cache failed',
+    cacheOverview: isZh ? '数据总览缓存' : 'Data Overview cache',
+    cache3h: isZh ? '3h 数据缓存' : '3h data cache',
     accessTitle: isZh ? '可用页面' : 'Available In',
     accessEmpty: isZh ? '当前不能在数据总览中选择使用。' : 'This dataset cannot currently be selected in Data Overview.',
     contributionReadyStat: isZh ? '可送审' : 'Ready to submit',
@@ -311,6 +317,8 @@ function EmptyState({ icon, title, desc }) {
 function getUploadStatusMeta(status, t) {
   const palette = {
     valid: { color: C.blue, bg: 'rgba(74,158,255,0.1)' },
+    cache_building: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+    cache_failed: { color: C.mars, bg: 'rgba(199,91,57,0.1)' },
     invalid: { color: C.mars, bg: 'rgba(199,91,57,0.1)' },
     pending_review: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
     approved: { color: C.green, bg: 'rgba(74,207,172,0.1)' },
@@ -325,6 +333,22 @@ function getUploadStatusMeta(status, t) {
 
 function normalizeType(type) {
   return String(type || '').trim().toLowerCase();
+}
+
+function getCacheItem(upload, cacheType) {
+  const artifacts = Array.isArray(upload?.cache_status?.artifacts) ? upload.cache_status.artifacts : [];
+  const jobs = Array.isArray(upload?.cache_status?.jobs) ? upload.cache_status.jobs : [];
+  const artifact = artifacts.find((item) => item.cache_type === cacheType && item.status === 'ready');
+  const job = jobs.find((item) => item.job_type === cacheType);
+  return { artifact, job };
+}
+
+function getCacheLabel(upload, cacheType, copy) {
+  const { artifact, job } = getCacheItem(upload, cacheType);
+  if (artifact) return copy.cacheReady;
+  if (job?.status === 'failed') return copy.cacheFailed;
+  if (job) return `${copy.cacheBuilding}${job.progress != null ? ` ${Math.round(job.progress)}%` : ''}`;
+  return normalizeType(upload?.data_type) === 'mcd' ? copy.cacheBuilding : '--';
 }
 
 function getOverviewRoleMeta(datasetUsage, isZh) {
@@ -389,6 +413,8 @@ function deriveContributionCondition(upload, copy) {
 }
 
 function deriveLifecycleLabel(upload, datasetState, copy) {
+  if (upload?.status === 'cache_building') return copy.cacheBuilding;
+  if (upload?.status === 'cache_failed') return copy.cacheFailed;
   if (upload?.status === 'invalid') return copy.lifecycleInvalid;
   if (upload?.status === 'rejected') return copy.lifecycleRejected;
   if (upload?.status === 'approved') return copy.lifecycleApproved;
@@ -749,6 +775,22 @@ function CompactQueueItem({ ctx, selected, onSelect, copy }) {
             <span>{upload.mars_year != null ? `MY ${upload.mars_year}` : 'MY --'}</span>
             <span>{formatLsLabel(upload.ls_start, upload.ls_end, 0)}</span>
           </div>
+          {normalizeType(upload.data_type) === 'mcd' && (
+            <div
+              style={{
+                display: 'grid',
+                gap: 4,
+                marginTop: 8,
+                fontSize: 'calc(10px * var(--font-scale, 1))',
+                color: C.ice30,
+                lineHeight: 1.5,
+              }}
+            >
+              <span style={{ color: C.ice60 }}>{copy.rawMcdSource}</span>
+              <span>{copy.cacheOverview}: {getCacheLabel(upload, 'mcd_overview', copy)}</span>
+              <span>{copy.cache3h}: {getCacheLabel(upload, 'mcd_3h', copy)}</span>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>

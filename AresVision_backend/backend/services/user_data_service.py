@@ -34,11 +34,12 @@ logger = logging.getLogger("aresvision.user_data")
 class UserDataService:
     """按需读取用户上传的 .nc 文件并生成可视化数据"""
 
-    def __init__(self):
+    def __init__(self, mcd_cache_service=None):
         # LRU 缓存：key = f"data_{upload_id}", value = 解析后的数据字典
         self._cache: LRUCache = LRUCache(maxsize=8)
         # 审核通过的数据集文件路径索引：{ record_id: Path }
         self._approved_index: dict[int, Path] = {}
+        self.mcd_cache_service = mcd_cache_service
         self._scan_approved()
 
     # ─── 索引管理 ──────────────────────────────────────────────────────────────
@@ -74,6 +75,17 @@ class UserDataService:
 
     # ─── 文件路径解析 ──────────────────────────────────────────────────────────
 
+    async def _get_record_file_info(self, upload_id: int) -> Optional[dict]:
+        async with async_session_maker() as db:
+            record = await db.get(UploadRecord, upload_id)
+            if not record:
+                return None
+            return {
+                "file_path": record.file_path,
+                "data_type": record.data_type,
+                "status": record.status,
+            }
+
     async def _get_file_path(self, upload_id: int) -> Optional[str]:
         """
         从 approved 索引或数据库记录中定位 .nc 文件。
@@ -87,12 +99,15 @@ class UserDataService:
                 return str(p)
 
         # 2. 数据库记录的路径
-        async with async_session_maker() as db:
-            record = await db.get(UploadRecord, upload_id)
-            if not record:
-                return None
-            if record.file_path and Path(record.file_path).exists():
-                return record.file_path
+        info = await self._get_record_file_info(upload_id)
+        if info and info.get("data_type") == "mcd" and self.mcd_cache_service is not None:
+            ready_path = await self.mcd_cache_service.get_ready_artifact_path(upload_id, "mcd_overview")
+            if ready_path is not None:
+                return str(ready_path)
+            raise ValueError(f"MCD upload {upload_id} overview cache is not ready")
+
+        if info and info.get("file_path") and Path(info["file_path"]).exists():
+            return info["file_path"]
         return None
 
     # ─── NC 文件解析 ───────────────────────────────────────────────────────────

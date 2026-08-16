@@ -4,7 +4,13 @@ import C from '../../../constants/colors';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewCouplingData } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { correlation, roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  correlation,
+  roundValue,
+  sampleInsightSeries,
+  summarizeInsightSeries,
+} from './aiInsight';
 import { movingAverageSeries } from './chartSeries';
 import { formatAdaptiveSeries } from './chartValueFormat';
 
@@ -69,10 +75,10 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
     if (!data?.var1?.length || !data?.var2?.length) return null;
     return {
       corr: correlation(data.var1, data.var2),
-      ozoneStats: summarizeSeries(data.var1),
-      driverStats: summarizeSeries(data.var2),
-      ozoneSamples: sampleSeries(data.var1, data.ls || [], 10),
-      driverSamples: sampleSeries(data.var2, data.ls || [], 10),
+      ozoneStats: summarizeInsightSeries(data.var1),
+      driverStats: summarizeInsightSeries(data.var2),
+      ozoneSamples: sampleInsightSeries(data.var1, data.ls || [], 10),
+      driverSamples: sampleInsightSeries(data.var2, data.ls || [], 10),
     };
   }, [data]);
 
@@ -92,11 +98,14 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
   const aiInsightProvider = useCallback(() => ({
     card: 'coupling',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
+    valueMeaning: 'Global mean O3 and Temperature seasonal coupling; correlation is calculated from raw series while displayed trend lines are smoothed.',
     status: loading ? 'loading' : (data?.ls?.length ? 'ready' : 'empty'),
     lsCount: data?.ls?.length || 0,
     correlation: diagnostics?.corr ?? null,
     ozone: diagnostics
       ? {
+        unit: 'μm-atm',
         stats: diagnostics.ozoneStats,
         samples: diagnostics.ozoneSamples,
       }
@@ -104,6 +113,7 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
     driver: diagnostics
       ? {
         name: 'Temperature',
+        unit: 'K',
         stats: diagnostics.driverStats,
         samples: diagnostics.driverSamples,
       }
@@ -112,7 +122,7 @@ export default function CouplingAnalysis({ marsYear, overviewSourceParams = {} }
       min: roundValue(data?.ls?.[0]),
       max: roundValue(data?.ls?.[data?.ls?.length - 1]),
     },
-  }), [data, diagnostics, loading, marsYear]);
+  }), [data, diagnostics, loading, marsYear, overviewSourceParams]);
 
   useAiInsightRegistration('coupling', aiInsightProvider);
 

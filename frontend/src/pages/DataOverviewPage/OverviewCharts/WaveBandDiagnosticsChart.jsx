@@ -4,7 +4,11 @@ import C from '../../../constants/colors';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewZonalAnomaly } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  sampleInsightSeries,
+} from './aiInsight';
 import { resolveWaveDiagnosticsSource } from './waveDiagnosticsSource';
 
 const VARIABLE_OPTIONS = [
@@ -195,15 +199,17 @@ export default function WaveBandDiagnosticsChart({
     return {
       card: 'waveDiag',
       marsYear,
+      source: buildOverviewSourceSnapshot(overviewSourceParams),
       variable,
       variableLabel: currentVariableLabel,
+      valueMeaning: 'Latitude-band spatial anomaly diagnostics; RMS measures anomaly strength and span measures peak-to-peak spread.',
       status: loading ? 'loading' : (bands.length ? 'ready' : 'empty'),
-      strongestRms: strongestRms ? { band: strongestRms.band, value: roundValue(strongestRms.value) } : null,
-      strongestSpan: strongestSpan ? { band: strongestSpan.band, value: roundValue(strongestSpan.value) } : null,
-      rmsSample: sampleSeries(rms, bands, 8),
-      spanSample: sampleSeries(span, bands, 8),
+      strongestRms: strongestRms ? { band: strongestRms.band, value: formatInsightValue(strongestRms.value) } : null,
+      strongestSpan: strongestSpan ? { band: strongestSpan.band, value: formatInsightValue(strongestSpan.value) } : null,
+      rmsSample: sampleInsightSeries(rms, bands, 8),
+      spanSample: sampleInsightSeries(span, bands, 8),
     };
-  }, [currentVariableLabel, diagnostics, loading, marsYear, variable]);
+  }, [currentVariableLabel, diagnostics, loading, marsYear, overviewSourceParams, variable]);
 
   useAiInsightRegistration('waveDiag', aiInsightProvider);
 

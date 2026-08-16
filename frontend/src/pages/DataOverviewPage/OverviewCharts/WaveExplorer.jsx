@@ -4,7 +4,11 @@ import C from '../../../constants/colors';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewZonalAnomaly } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  sampleInsightSeries,
+} from './aiInsight';
 import WaveBandDiagnosticsChart from './WaveBandDiagnosticsChart';
 import { formatAdaptiveMatrix } from './chartValueFormat';
 
@@ -61,18 +65,21 @@ export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
     const equatorSeries = Array.isArray(data.z[rowIndex]) ? data.z[rowIndex] : [];
     return {
       valueRange: {
-        min: roundValue(data.min),
-        max: roundValue(data.max),
-        maxAbs: roundValue(Math.max(Math.abs(data.min || 0), Math.abs(data.max || 0))),
+        min: formatInsightValue(data.min),
+        max: formatInsightValue(data.max),
+        maxAbs: formatInsightValue(Math.max(Math.abs(data.min || 0), Math.abs(data.max || 0))),
       },
-      equatorSamples: sampleSeries(equatorSeries, data.x, 12),
+      equatorSamples: sampleInsightSeries(equatorSeries, data.x, 12),
     };
   }, [data]);
 
   const aiInsightProvider = useCallback(() => ({
     card: 'wave',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
     variable: 'o3col',
+    unit: 'μm-atm anomaly',
+    valueMeaning: 'Zonal anomaly heatmap: positive and negative departures from the zonal mean by longitude and latitude.',
     status: loading ? 'loading' : (data?.z?.length ? 'ready' : 'empty'),
     dimensions: {
       lonCount: data?.x?.length || 0,
@@ -80,7 +87,7 @@ export default function WaveExplorer({ marsYear, overviewSourceParams = {} }) {
     },
     valueRange: diagnostics?.valueRange || null,
     equatorialAnomalySamples: diagnostics?.equatorSamples || [],
-  }), [data, diagnostics, loading, marsYear]);
+  }), [data, diagnostics, loading, marsYear, overviewSourceParams]);
 
   useAiInsightRegistration('wave', aiInsightProvider);
 

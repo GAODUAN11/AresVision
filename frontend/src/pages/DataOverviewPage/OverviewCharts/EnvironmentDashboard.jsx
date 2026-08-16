@@ -7,7 +7,13 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { convertTemp, tempLabel, convertWind, windLabel } from '../../../utils/units';
 import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+  summarizeInsightSeries,
+} from './aiInsight';
 
 const VARIABLE_META_BASE = [
   { id: 'Temperature', color: C.mars, unit: 'K' },
@@ -280,14 +286,21 @@ export default function EnvironmentDashboard({ marsYear, overviewSourceParams = 
       return {
         variable: meta.id,
         label: meta.label,
-        mean: roundValue(dataset?.mean),
-        seriesStats: summarizeSeries(dataset?.series || []),
-        seriesSample: sampleSeries(dataset?.series || [], dataset?.ls || [], 8),
+        unit: unitLabel(meta.id, meta.unit),
+        mean: formatInsightValue(convertValue(meta.id, dataset?.mean)),
+        seriesStats: summarizeInsightSeries((dataset?.series || []).map((value) => convertValue(meta.id, value))),
+        seriesSample: sampleInsightSeries(
+          (dataset?.series || []).map((value) => convertValue(meta.id, value)),
+          dataset?.ls || [],
+          8,
+        ),
       };
     });
     return {
       card: 'environment',
       marsYear,
+      source: buildOverviewSourceSnapshot(overviewSourceParams),
+      valueMeaning: 'Environment variables are global/latitude-band seasonal summaries; dominantDrivers are correlations with O3 by latitude band.',
       status: loading ? 'loading' : (variableSummary.length ? 'ready' : 'empty'),
       dominantDrivers: dominantDrivers.map((item) => ({
         band: item.band,
@@ -296,7 +309,7 @@ export default function EnvironmentDashboard({ marsYear, overviewSourceParams = 
       })),
       variableSummary,
     };
-  }, [datasets, dominantDrivers, loading, marsYear, variableMeta]);
+  }, [datasets, dominantDrivers, loading, marsYear, overviewSourceParams, variableMeta]);
 
   useAiInsightRegistration('environment', aiInsightProvider);
 

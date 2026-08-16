@@ -6,11 +6,16 @@ import { useT } from '../../../i18n';
 import { convertOzone, ozoneLabel } from '../../../utils/units';
 import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+} from './aiInsight';
 import { buildDistributionStats } from '../distributionStats';
 import { formatAdaptiveSeries, formatAdaptiveValue } from './chartValueFormat';
 
-export default function DataDistribution({ marsYear, lsValue, sliceData }) {
+export default function DataDistribution({ marsYear, lsValue, sliceData, overviewSourceParams = {} }) {
   const t = useT();
   const { settings } = useSettings();
 
@@ -64,23 +69,30 @@ export default function DataDistribution({ marsYear, lsValue, sliceData }) {
   const aiInsightProvider = useCallback(() => ({
     card: 'distribution',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
     ls: roundValue(lsValue, 2),
+    unit: ozoneLabel(ozoneUnit),
+    valueMeaning: 'Global ozone distribution for the selected MY/Ls slice; histogram samples are ozone values and latitudinal samples are latitude-band means.',
     status: derived ? 'ready' : 'empty',
     distribution: derived
       ? {
         pointCount: derived.values.length,
-        mean: roundValue(derived.mean),
-        p10: roundValue(derived.p10),
-        p90: roundValue(derived.p90),
+        mean: formatInsightValue(convertOzone(derived.mean, ozoneUnit)),
+        p10: formatInsightValue(convertOzone(derived.p10, ozoneUnit)),
+        p90: formatInsightValue(convertOzone(derived.p90, ozoneUnit)),
       }
       : null,
-    histogramSample: sampleSeries(derived?.values || [], null, 10),
-    latitudinalSample: sampleSeries(
-      derived?.latProfile?.map((item) => item.mean) || [],
+    histogramSample: sampleInsightSeries(
+      derived?.values?.map((value) => convertOzone(value, ozoneUnit)) || [],
+      null,
+      10,
+    ),
+    latitudinalSample: sampleInsightSeries(
+      derived?.latProfile?.map((item) => convertOzone(item.mean, ozoneUnit)) || [],
       derived?.latProfile?.map((item) => item.lat) || [],
       10,
     ),
-  }), [derived, lsValue, marsYear]);
+  }), [derived, lsValue, marsYear, overviewSourceParams, ozoneUnit]);
 
   useAiInsightRegistration('distribution', aiInsightProvider);
 

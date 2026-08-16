@@ -7,7 +7,12 @@ import { fetchOverviewDiurnal } from '../../../services/api';
 import { convertOzone, ozoneLabel } from '../../../utils/units';
 import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+} from './aiInsight';
 import { formatAdaptiveSeries, formatAdaptiveValue } from './chartValueFormat';
 
 const LAT_BANDS = [
@@ -130,21 +135,27 @@ export default function RealtimeMonitor({ marsYear, lsValue, overviewSourceParam
   const aiInsightProvider = useCallback(() => ({
     card: 'realtime',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
     ls: roundValue(lsValue, 2),
     latBand,
     latBandLabel: shortLabels[latBand] || latBand,
+    unit: 'μm-atm',
+    valueMeaning: 'Hourly ozone column sampled by local time for the selected latitude band.',
     status: loading && !data?.ozone_values?.length ? 'loading' : (data?.ozone_values?.length ? 'ready' : 'empty'),
+    emptyReason: !loading && !data?.ozone_values?.length
+      ? 'Hourly O3COL/o3col data is unavailable for this MCD source.'
+      : null,
     metrics: stats
       ? {
-        mean: roundValue(stats.mean),
-        max: roundValue(stats.max),
-        min: roundValue(stats.min),
-        amplitude: roundValue(stats.amplitude),
+        mean: formatInsightValue(stats.mean),
+        max: formatInsightValue(stats.max),
+        min: formatInsightValue(stats.min),
+        amplitude: formatInsightValue(stats.amplitude),
         peakHour: roundValue(stats.peakHour, 2),
       }
       : null,
-    samples: sampleSeries(data?.ozone_values || [], data?.hours || [], 12),
-  }), [data, latBand, loading, lsValue, marsYear, shortLabels, stats]);
+    samples: sampleInsightSeries(data?.ozone_values || [], data?.hours || [], 12),
+  }), [data, latBand, loading, lsValue, marsYear, overviewSourceParams, shortLabels, stats]);
 
   useAiInsightRegistration('realtime', aiInsightProvider);
 

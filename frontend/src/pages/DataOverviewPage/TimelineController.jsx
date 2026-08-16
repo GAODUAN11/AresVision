@@ -1,4 +1,7 @@
 import React from 'react';
+import PauseRoundedIcon from '@mui/icons-material/PauseRounded';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
+import RestartAltRoundedIcon from '@mui/icons-material/RestartAltRounded';
 import GlowCard from '../../components/GlowCard';
 import C from '../../constants/colors';
 import { useT } from '../../i18n';
@@ -10,12 +13,6 @@ import {
   getOzoneAvailabilityLabel,
 } from './timelineCoverage.js';
 import { formatTimelineLs } from './timelineFormatting.js';
-
-const SOURCE_LEGEND = [
-  { key: 'mcd', label: 'MCD' },
-  { key: 'openmars', label: 'OpenMARS' },
-  { key: 'nomad', label: 'NOMAD' },
-];
 
 export default function TimelineController() {
   const t = useT();
@@ -68,16 +65,11 @@ export default function TimelineController() {
       : hasOpenMarsAtCurrentLs
         ? C.blue
         : C.mars;
-  const colorBySource = {
-    mcd: C.mars,
-    openmars: C.blue,
-    nomad: C.green,
-  };
-  const activeCoverageBySource = {
-    mcd: true,
-    openmars: openmarsSegments.length > 0,
-    nomad: nomadSegments.length > 0,
-  };
+  const sourceIndicators = [
+    { key: 'mcd', label: 'MCD', color: C.mars, active: true },
+    { key: 'openmars', label: 'OpenMARS', color: C.blue, active: openmarsSegments.length > 0 },
+    { key: 'nomad', label: 'NOMAD', color: C.green, active: nomadSegments.length > 0 },
+  ];
 
   return (
     <div
@@ -91,76 +83,137 @@ export default function TimelineController() {
         transition: 'none',
       }}
     >
-      <GlowCard style={{ padding: '12px 14px 10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <GlowCard style={{ padding: '7px 10px 6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <button
             onClick={onTogglePlay}
             title={isPlayingTimeline ? t('common.pause') : t('common.play')}
+            aria-label={isPlayingTimeline ? t('common.pause') : t('common.play')}
             style={{
-              width: 38,
-              height: 38,
+              width: 28,
+              height: 28,
               borderRadius: '50%',
               background: isPlayingTimeline ? 'rgba(199,91,57,0.14)' : `linear-gradient(135deg, ${C.mars}, ${C.marsLight})`,
               border: `1px solid ${isPlayingTimeline ? C.mars : 'transparent'}`,
               color: isPlayingTimeline ? C.mars : '#fff',
-              fontSize: 'calc(14px * var(--font-scale, 1))',
-              fontWeight: 800,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
               transition: 'all 0.3s ease',
-              boxShadow: isPlayingTimeline ? 'none' : '0 10px 24px rgba(199,91,57,0.24)',
+              boxShadow: isPlayingTimeline ? 'none' : '0 7px 16px rgba(199,91,57,0.22)',
               flexShrink: 0,
             }}
           >
-            {isPlayingTimeline ? '❚❚' : '▶'}
+            {isPlayingTimeline ? <PauseRoundedIcon sx={{ fontSize: 17 }} /> : <PlayArrowRoundedIcon sx={{ fontSize: 19 }} />}
           </button>
 
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 12 }}>
-              <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice50, fontWeight: 600 }}>
-                {isZh ? '太阳黄经' : 'Solar longitude'}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <div
+              className="timeline-meta-strip"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 4,
+                gap: 8,
+                minWidth: 0,
+                lineHeight: 1,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    fontSize: 'calc(9px * var(--font-scale, 1))',
+                    color: C.ice50,
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {isZh ? '太阳黄经' : 'Solar longitude'}
+                </div>
                 <div
                   title={isZh ? '当前 Ls 可用臭氧来源' : 'Available ozone sources at current Ls'}
                   style={{
-                    padding: '3px 8px',
+                    padding: '2px 6px',
                     borderRadius: 999,
                     background: hasMultiSourceAtCurrentLs
                       ? isLight ? 'rgba(15,23,42,0.05)' : 'rgba(255,255,255,0.06)'
                       : 'transparent',
                     border: `1px solid ${hasMultiSourceAtCurrentLs ? C.borderHover : C.border}`,
                     color: hasMultiSourceAtCurrentLs ? C.ice70 : C.ice40,
-                    fontSize: 'calc(10px * var(--font-scale, 1))',
+                    fontSize: 'calc(8px * var(--font-scale, 1))',
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
+                    flexShrink: 0,
                     boxShadow: hasMultiSourceAtCurrentLs ? '0 8px 22px rgba(0,0,0,0.14)' : 'none',
                   }}
                 >
                   {availabilityLabel}
                 </div>
-                <div style={{ fontSize: 'calc(13px * var(--font-scale, 1))', color: C.mars, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
+                <div
+                  aria-label={isZh ? '数据源覆盖' : 'Data source coverage'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {sourceIndicators.map((item) => (
+                    <span
+                      key={item.key}
+                      title={item.label}
+                      className="timeline-source-dot"
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 999,
+                        background: item.color,
+                        boxShadow: item.active ? `0 0 7px ${item.color}` : 'none',
+                        opacity: item.active ? 1 : 0.35,
+                        flexShrink: 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flexShrink: 0 }}>
+                <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.mars, fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1 }}>
                   {displayedTimelineLs}°
+                </div>
+                <div
+                  title={seasonName}
+                  style={{
+                    maxWidth: 118,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    color: C.ice50,
+                    fontSize: 'calc(9px * var(--font-scale, 1))',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {seasonName}
                 </div>
               </div>
             </div>
 
-            <div style={{ position: 'relative', height: 30 }}>
+            <div style={{ position: 'relative', height: 18 }}>
               <div
                 aria-hidden="true"
                 style={{
                   position: 'absolute',
                   left: 0,
                   right: 0,
-                  top: 9,
-                  height: 14,
+                  top: 5,
+                  height: 7,
                   borderRadius: 999,
                   overflow: 'hidden',
                   background: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
                   border: `1px solid ${C.border}`,
-                  boxShadow: 'inset 0 0 12px rgba(0,0,0,0.18)',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.18)',
                   pointerEvents: 'none',
                 }}
               >
@@ -186,7 +239,7 @@ export default function TimelineController() {
                       left: `${segment.left}%`,
                       top: 2,
                       width: `${segment.width}%`,
-                      height: 4,
+                      height: 3,
                       borderRadius: 999,
                       background: C.blue,
                       boxShadow: `0 0 10px ${C.blueGlow}`,
@@ -202,7 +255,7 @@ export default function TimelineController() {
                       left: `${segment.left}%`,
                       bottom: 2,
                       width: `${segment.width}%`,
-                      height: 4,
+                      height: 3,
                       borderRadius: 999,
                       background: C.green,
                       boxShadow: '0 0 10px rgba(99,232,191,0.34)',
@@ -215,7 +268,7 @@ export default function TimelineController() {
                     left: `${thumbLeft}%`,
                     top: -1,
                     width: 2,
-                    height: 16,
+                    height: 9,
                     transform: 'translateX(-50%)',
                     borderRadius: 999,
                     background: statusAccent,
@@ -243,49 +296,19 @@ export default function TimelineController() {
                 }}
               />
             </div>
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
-              {SOURCE_LEGEND.map((item) => (
-                <div
-                  key={item.key}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    color: activeCoverageBySource[item.key] ? C.ice50 : C.ice30,
-                    fontSize: 'calc(10px * var(--font-scale, 1))',
-                    fontWeight: 700,
-                    opacity: activeCoverageBySource[item.key] ? 1 : 0.48,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: 999,
-                      background: colorBySource[item.key],
-                      boxShadow: activeCoverageBySource[item.key] ? `0 0 8px ${colorBySource[item.key]}` : 'none',
-                    }}
-                  />
-                  {item.label}
-                </div>
-              ))}
-            </div>
           </div>
 
           <button
             onClick={() => setGlobalTimeLs(timelineMin)}
             title={isZh ? '重置 Ls' : 'Reset Ls'}
+            aria-label={isZh ? '重置 Ls' : 'Reset Ls'}
             style={{
               background: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.05)',
               border: `1px solid ${C.border}`,
               borderRadius: 999,
-              minWidth: 58,
-              height: 32,
+              width: 26,
+              height: 26,
               color: C.ice60,
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -293,23 +316,8 @@ export default function TimelineController() {
               flexShrink: 0,
             }}
           >
-            {isZh ? '重置' : 'Reset'}
+            <RestartAltRoundedIcon sx={{ fontSize: 16 }} />
           </button>
-
-          <div
-            style={{
-              padding: '6px 10px',
-              borderRadius: 999,
-              border: `1px solid ${C.border}`,
-              background: C.bgMuted,
-              color: C.ice60,
-              fontSize: 'calc(11px * var(--font-scale, 1))',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-            }}
-          >
-            {seasonName}
-          </div>
         </div>
       </GlowCard>
     </div>

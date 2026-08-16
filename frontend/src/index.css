@@ -289,7 +289,7 @@ textarea {
 }
 
 .coverage-range-input::-webkit-slider-runnable-track {
-  height: 30px;
+  height: 16px;
   background: transparent;
   border: 0;
 }
@@ -297,28 +297,28 @@ textarea {
 .coverage-range-input::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: 6px;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
   border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.92);
+  border: 1.5px solid rgba(255,255,255,0.92);
   background: linear-gradient(135deg, #ff8f68, #ffb08e);
-  box-shadow: 0 0 0 4px rgba(255,143,104,0.16), 0 8px 18px rgba(0,0,0,0.28);
+  box-shadow: 0 0 0 2px rgba(255,143,104,0.14), 0 5px 10px rgba(0,0,0,0.24);
   cursor: pointer;
 }
 
 .coverage-range-input::-moz-range-track {
-  height: 30px;
+  height: 16px;
   background: transparent;
   border: 0;
 }
 
 .coverage-range-input::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.92);
+  border: 1.5px solid rgba(255,255,255,0.92);
   background: linear-gradient(135deg, #ff8f68, #ffb08e);
-  box-shadow: 0 0 0 4px rgba(255,143,104,0.16), 0 8px 18px rgba(0,0,0,0.28);
+  box-shadow: 0 0 0 2px rgba(255,143,104,0.14), 0 5px 10px rgba(0,0,0,0.24);
   cursor: pointer;
 }

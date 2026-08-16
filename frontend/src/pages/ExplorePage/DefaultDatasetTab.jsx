@@ -42,8 +42,32 @@ const OFFICIAL_CAPABILITY_TAG_KEYS = [
 ];
 
 const HERO_TAG_KEYS = ['openmars', 'mcd', 'officialBenchmark', 'unifiedGrid', 'featureSpace'];
-const OPENMARS_TAG_KEYS = ['o3Column', 'globalField', 'lsTime', 'planetaryBaseline'];
-const MCD_TAG_KEYS = ['temperature', 'pressure', 'wind', 'dust', 'solarFlux'];
+const OFFICIAL_SOURCE_CARDS = [
+  {
+    key: 'mcd',
+    title: 'MCD 6.1',
+    subtitleKey: 'mcdSubtitle',
+    bodyKey: 'mcdBody',
+    tagKeys: ['fullOverview', 'environmentDrivers', 'lsGrid'],
+    accent: C.mars,
+  },
+  {
+    key: 'openmars',
+    title: 'OpenMARS',
+    subtitleKey: 'openmarsSubtitle',
+    bodyKey: 'openmarsBody',
+    tagKeys: ['o3Column', 'globalField', 'lsTime'],
+    accent: C.blue,
+  },
+  {
+    key: 'nomad',
+    title: 'NOMAD',
+    subtitleKey: 'nomadSubtitle',
+    bodyKey: 'nomadBody',
+    tagKeys: ['o3Column', 'observationCount', 'validationLayer'],
+    accent: C.green,
+  },
+];
 
 function getSourceModeLabel(mode, t) {
   const map = {
@@ -181,14 +205,14 @@ function MetricCard({ eyebrow, value, label, desc, accent = C.blue }) {
   );
 }
 
-function SourceCard({ title, subtitle, tags, body }) {
+function SourceCard({ title, subtitle, tags, body, accent = C.blue }) {
   return (
     <div
       style={{
-        border: `1px solid ${C.border}`,
+        border: `1px solid ${accent}33`,
         borderRadius: 14,
         padding: '16px 18px',
-        background: 'rgba(255,255,255,0.02)',
+        background: `linear-gradient(135deg, ${accent}12, rgba(255,255,255,0.02))`,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
@@ -200,7 +224,7 @@ function SourceCard({ title, subtitle, tags, body }) {
             style={{
               fontSize: 'calc(12px * var(--font-scale, 1))',
               fontWeight: 700,
-              color: C.ice,
+              color: accent,
               fontFamily: "'Orbitron', sans-serif",
               letterSpacing: 1.2,
             }}
@@ -219,7 +243,7 @@ function SourceCard({ title, subtitle, tags, body }) {
               color: C.ice60,
               padding: '3px 8px',
               borderRadius: 999,
-              border: `1px solid ${C.border}`,
+              border: `1px solid ${accent}2e`,
               background: 'rgba(255,255,255,0.03)',
             }}
           >
@@ -395,18 +419,16 @@ export default function DefaultDatasetTab() {
           {t('explore.defaultDataset.sourceTitle')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14 }}>
-          <SourceCard
-            title="OpenMARS"
-            subtitle={t('explore.defaultDataset.openmarsSubtitle')}
-            tags={OPENMARS_TAG_KEYS.map((tagKey) => t(`explore.defaultDataset.openmarsTags.${tagKey}`))}
-            body={t('explore.defaultDataset.openmarsBody')}
-          />
-          <SourceCard
-            title="MCD 6.1"
-            subtitle={t('explore.defaultDataset.mcdSubtitle')}
-            tags={MCD_TAG_KEYS.map((tagKey) => t(`explore.defaultDataset.mcdTags.${tagKey}`))}
-            body={t('explore.defaultDataset.mcdBody')}
-          />
+          {OFFICIAL_SOURCE_CARDS.map((source) => (
+            <SourceCard
+              key={source.key}
+              title={source.title}
+              subtitle={t(`explore.defaultDataset.${source.subtitleKey}`)}
+              tags={source.tagKeys.map((tagKey) => t(`explore.defaultDataset.sourceTags.${tagKey}`))}
+              body={t(`explore.defaultDataset.${source.bodyKey}`)}
+              accent={source.accent}
+            />
+          ))}
         </div>
       </GlowCard>
 

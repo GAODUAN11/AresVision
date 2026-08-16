@@ -75,15 +75,22 @@ function createCopy(isZh) {
     searchPlaceholder: isZh ? '按文件名、类型或火星年搜索' : 'Search by filename, type, or Mars year',
     queueTitle: isZh ? '数据队列' : 'Dataset Queue',
     queueDesc: isZh
-      ? '先在队列里筛选和定位数据，再到右侧集中查看状态、动作和内容预览。'
-      : 'Filter and locate datasets in the queue, then inspect status, actions, and preview on the right.',
+      ? '先在队列里筛选和定位数据，再到右侧集中查看状态、动作和高级详情。'
+      : 'Filter and locate datasets in the queue, then inspect status, actions, and advanced details on the right.',
     noMatchTitle: isZh ? '没有匹配的数据' : 'No matching datasets',
     noMatchDesc: isZh ? '试试切换筛选条件或修改搜索关键词。' : 'Try another filter or change the search term.',
-    detailTitle: isZh ? '数据详情与预览' : 'Dataset Detail & Preview',
+    detailTitle: isZh ? '数据详情' : 'Dataset Detail',
     detailEmptyTitle: isZh ? '选择一条数据开始查看' : 'Select a dataset to inspect',
     detailEmptyDesc: isZh
-      ? '从左侧数据队列中选中一条记录后，这里会集中展示它的接入状态、可执行动作和内容预览。'
-      : 'Choose a record from the dataset queue to see its ingestion status, available actions, and content preview in one place.',
+      ? '从左侧数据队列中选中一条记录后，这里会集中展示它的接入状态、可执行动作和高级详情入口。'
+      : 'Choose a record from the dataset queue to see its ingestion status, available actions, and advanced detail entry point.',
+    advancedTitle: isZh ? '高级详情' : 'Advanced Details',
+    advancedDesc: isZh
+      ? '展开后查看校验规则、可用页面、元数据和图表预览。'
+      : 'Expand to inspect validation rules, available pages, metadata, and preview charts.',
+    advancedShow: isZh ? '展开高级详情' : 'Show advanced details',
+    advancedHide: isZh ? '收起高级详情' : 'Hide advanced details',
+    personalRoleTitle: isZh ? '三类个人数据' : 'Three Personal Source Types',
     uploadStatusTitle: isZh ? '上传状态' : 'Upload Status',
     accessTitle: isZh ? '可用页面' : 'Available In',
     accessEmpty: isZh ? '当前不能在数据总览中选择使用。' : 'This dataset cannot currently be selected in Data Overview.',
@@ -914,6 +921,93 @@ function PreviewContent({ viewData, viewLs, onLsChange, t }) {
   );
 }
 
+function AdvancedDetailSection({ open, copy, t, viewingCtx, viewingUpload, viewData, viewLs, onLsChange }) {
+  if (!open) return null;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        borderTop: `1px solid ${C.border}`,
+        paddingTop: 16,
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: 'calc(11px * var(--font-scale, 1))',
+            fontWeight: 700,
+            color: C.blue,
+            fontFamily: "'Orbitron', sans-serif",
+            letterSpacing: 2,
+            marginBottom: 8,
+          }}
+        >
+          {copy.advancedTitle}
+        </div>
+        <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.75 }}>
+          {copy.advancedDesc}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+        <RuleList
+          title={copy.canUseTitle}
+          ok={viewingCtx.analysisCondition.ok}
+          desc={copy.canUseDesc}
+          rules={viewingCtx.analysisCondition.rules}
+          copy={copy}
+        />
+        <RuleList
+          title={copy.canContributeTitle}
+          ok={viewingCtx.contributionCondition.ok}
+          desc={copy.canContributeDesc}
+          rules={viewingCtx.contributionCondition.rules}
+          copy={copy}
+        />
+      </div>
+
+      <UsagePanel pages={viewingCtx.datasetState.usagePages} copy={copy} />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '8px 14px',
+          padding: '14px 16px',
+          background: 'rgba(255,255,255,0.03)',
+          border: `1px solid ${C.border}`,
+          borderRadius: 14,
+        }}
+      >
+        <MetaRow label={t('explore.myData.cardType')} value={viewingUpload.data_type || '--'} />
+        <MetaRow label={t('explore.myData.cardMarsYear')} value={viewingUpload.mars_year != null ? `MY ${viewingUpload.mars_year}` : '--'} />
+        <MetaRow label={t('explore.myData.cardLs')} value={formatLsLabel(viewingUpload.ls_start, viewingUpload.ls_end)} />
+        <MetaRow label={t('explore.myData.cardSize')} value={formatFileSize(viewingUpload.file_size)} />
+        <MetaRow label={t('explore.myData.cardTime')} value={formatDate(viewingUpload.created_at)} />
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: 'calc(11px * var(--font-scale, 1))',
+            fontWeight: 700,
+            color: C.blue,
+            fontFamily: "'Orbitron', sans-serif",
+            letterSpacing: 2,
+            marginBottom: 10,
+          }}
+        >
+          {t('explore.myData.viewerTitle')}
+        </div>
+        <PreviewContent viewData={viewData} viewLs={viewLs} onLsChange={onLsChange} t={t} />
+      </div>
+    </div>
+  );
+}
+
 function LoginPrompt({ t, openAuthModal }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', gap: 20, textAlign: 'center' }}>
@@ -976,6 +1070,8 @@ export default function MyDataTab({ reviewSignal = 0 }) {
   const [actionLoading, setActionLoading] = useState({});
   const [contributeOpen, setContributeOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const previewRequestRef = useRef(0);
 
   const loadWorkbench = useCallback(async () => {
     if (!user) return;
@@ -994,10 +1090,12 @@ export default function MyDataTab({ reviewSignal = 0 }) {
     if (user) loadWorkbench();
   }, [user, loadWorkbench, reviewSignal]);
 
-  const loadViewData = useCallback(async (uploadId) => {
+  const loadViewData = useCallback(async (uploadId, requestId) => {
     setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: true, error: null });
     try {
       const summary = await fetchUserDataSummary(uploadId);
+      if (requestId !== previewRequestRef.current) return;
+
       let defaultLs = 90;
       if (summary.ls_range) {
         defaultLs = Math.round((summary.ls_range[0] + summary.ls_range[1]) / 2);
@@ -1015,25 +1113,40 @@ export default function MyDataTab({ reviewSignal = 0 }) {
         ]);
       }
 
+      if (requestId !== previewRequestRef.current) return;
       setViewData({ summary, globe, heatmap, bands, loading: false, error: null });
     } catch (e) {
+      if (requestId !== previewRequestRef.current) return;
       setViewData((prev) => ({ ...prev, loading: false, error: e.message || t('common.error') }));
     }
   }, [t]);
 
   useEffect(() => {
-    if (viewingId != null) {
-      loadViewData(viewingId);
+    if (viewingId != null && advancedOpen) {
+      const requestId = previewRequestRef.current + 1;
+      previewRequestRef.current = requestId;
+      loadViewData(viewingId, requestId);
     } else {
+      previewRequestRef.current += 1;
       setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: false, error: null });
     }
-  }, [viewingId, loadViewData]);
+  }, [viewingId, advancedOpen, loadViewData]);
+
+  const onSelectDataset = useCallback((uploadId) => {
+    previewRequestRef.current += 1;
+    setAdvancedOpen(false);
+    setViewingId(uploadId);
+    setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: false, error: null });
+  }, []);
 
   const handleViewLsChange = useCallback(async (newLs) => {
     setViewLs(newLs);
     if (viewingId == null) return;
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
     try {
       const globe = await fetchUserGlobeData(viewingId, newLs);
+      if (requestId !== previewRequestRef.current) return;
       setViewData((prev) => ({ ...prev, globe }));
     } catch {
       // keep previous preview
@@ -1473,7 +1586,7 @@ export default function MyDataTab({ reviewSignal = 0 }) {
                   key={ctx.upload.id}
                   ctx={ctx}
                   selected={viewingId === ctx.upload.id}
-                  onSelect={() => setViewingId(ctx.upload.id)}
+                  onSelect={() => onSelectDataset(ctx.upload.id)}
                   copy={copy}
                   t={t}
                 />
@@ -1556,64 +1669,41 @@ export default function MyDataTab({ reviewSignal = 0 }) {
                 {viewingCtx.datasetState.desc}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-                <RuleList
-                  title={copy.canUseTitle}
-                  ok={viewingCtx.analysisCondition.ok}
-                  desc={copy.canUseDesc}
-                  rules={viewingCtx.analysisCondition.rules}
-                  copy={copy}
-                />
-                <RuleList
-                  title={copy.canContributeTitle}
-                  ok={viewingCtx.contributionCondition.ok}
-                  desc={copy.canContributeDesc}
-                  rules={viewingCtx.contributionCondition.rules}
-                  copy={copy}
-                />
-              </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 <SnapshotTile label={copy.lifeCycleTitle} value={viewingCtx.lifecycleLabel} accent={C.ice} />
                 <SnapshotTile label={copy.sourceModeTitle} value={viewingCtx.datasetState.modeMeta.label} desc={copy.sourceModeDesc} accent={viewingCtx.datasetState.modeMeta.color} />
                 <SnapshotTile label={copy.uploadStatusTitle} value={viewingCtx.uploadStatusMeta.label} accent={viewingCtx.uploadStatusMeta.color} />
               </div>
 
-              <UsagePanel pages={viewingCtx.datasetState.usagePages} copy={copy} />
-
-              <div
+              <button
+                onClick={() => setAdvancedOpen((value) => !value)}
+                aria-expanded={advancedOpen}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                  gap: '8px 14px',
-                  padding: '14px 16px',
-                  background: 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 14,
+                  alignSelf: 'flex-start',
+                  padding: '9px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${advancedOpen ? 'rgba(74,158,255,0.45)' : C.border}`,
+                  background: advancedOpen ? 'rgba(74,158,255,0.10)' : 'rgba(255,255,255,0.04)',
+                  color: advancedOpen ? C.blue : C.ice60,
+                  fontSize: 'calc(12px * var(--font-scale, 1))',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
                 }}
               >
-                <MetaRow label={t('explore.myData.cardType')} value={viewingUpload.data_type || '--'} />
-                <MetaRow label={t('explore.myData.cardMarsYear')} value={viewingUpload.mars_year != null ? `MY ${viewingUpload.mars_year}` : '--'} />
-                <MetaRow label={t('explore.myData.cardLs')} value={formatLsLabel(viewingUpload.ls_start, viewingUpload.ls_end)} />
-                <MetaRow label={t('explore.myData.cardSize')} value={formatFileSize(viewingUpload.file_size)} />
-                <MetaRow label={t('explore.myData.cardTime')} value={formatDate(viewingUpload.created_at)} />
-              </div>
+                {advancedOpen ? copy.advancedHide : copy.advancedShow}
+              </button>
 
-              <div>
-                <div
-                  style={{
-                    fontSize: 'calc(11px * var(--font-scale, 1))',
-                    fontWeight: 700,
-                    color: C.blue,
-                    fontFamily: "'Orbitron', sans-serif",
-                    letterSpacing: 2,
-                    marginBottom: 10,
-                  }}
-                >
-                  {t('explore.myData.viewerTitle')}
-                </div>
-                <PreviewContent viewData={viewData} viewLs={viewLs} onLsChange={handleViewLsChange} t={t} />
-              </div>
+              <AdvancedDetailSection
+                open={advancedOpen}
+                copy={copy}
+                t={t}
+                viewingCtx={viewingCtx}
+                viewingUpload={viewingUpload}
+                viewData={viewData}
+                viewLs={viewLs}
+                onLsChange={handleViewLsChange}
+              />
             </div>
           )}
         </GlowCard>

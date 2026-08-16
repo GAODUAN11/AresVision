@@ -85,7 +85,7 @@ export default function App() {
       <ErrorBoundary>
         <Navbar current={page} onChange={navigate} onOpenAdmin={() => setAdminPanelOpen(true)} onOpenFeedback={() => setFeedbackPanelOpen(true)} pendingRefreshSignal={reviewSignal} />
         <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-        <AdminReviewPanel open={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} onReviewComplete={() => setReviewSignal(v => v + 1)} />
+        <AdminReviewPanel open={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} onReviewComplete={() => setReviewSignal(v => v + 1)} reviewSignal={reviewSignal} />
         <FeedbackManagePanel open={feedbackPanelOpen} onClose={() => setFeedbackPanelOpen(false)} />
         <SettingsFab
           onOpenSettings={() => setSettingsOpen(true)}
@@ -105,7 +105,7 @@ export default function App() {
         >
           {page === 'home' && <HomePage onNavigate={navigate} />}
           {page === 'overview' && <DataOverviewPage />}
-          {page === 'explore' && <ExplorePage onOpenAdmin={() => setAdminPanelOpen(true)} reviewSignal={reviewSignal} />}
+          {page === 'explore' && <ExplorePage onReviewComplete={() => setReviewSignal(v => v + 1)} reviewSignal={reviewSignal} />}
           {page === 'predict' && <PredictPage />}
           {page === 'training' && <ModelTrainingPage />}
           {page === 'ai' && <AIPage />}

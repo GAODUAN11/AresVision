@@ -63,6 +63,7 @@ function SelectField({ label, value, onChange, options, disabled = false, isLigh
             <option
               key={option.value}
               value={option.value}
+              title={option.detail || option.label}
               style={{ color: optionColor, background: optionBg }}
             >
               {option.label}
@@ -169,9 +170,7 @@ function SourceScopePicker({
   const selectValue = scope === 'personal'
     ? (selectedUploadId ? String(selectedUploadId) : personalOptions[0]?.value || '')
     : resolvedOfficialValue;
-  const selectLabel = scope === 'personal'
-    ? (isZh ? '个人火星年' : 'Personal Mars year')
-    : (isZh ? '官方火星年' : 'Official Mars year');
+  const selectLabel = isZh ? '火星年' : 'Mars year';
   const disabledReason = !hasPersonalOptions && isZh
     ? '暂无可用于数据总览的个人上传源'
     : 'No usable personal upload for Data Overview yet';

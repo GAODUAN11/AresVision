@@ -46,7 +46,8 @@ export function buildUploadYearOptions(uploads = []) {
     })
     .map((item) => ({
       value: String(item.id),
-      label: `MY ${item.marsYear ?? '--'} - ${item.filename}`,
+      label: `MY ${item.marsYear ?? '--'}`,
+      detail: item.filename || '',
     }));
 }
 

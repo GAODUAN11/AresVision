@@ -29,24 +29,23 @@ def _sort_by_ls(data: dict, field_names: list[str]) -> dict:
     order = np.argsort(ls)
     out = dict(data)
     out["ls"] = ls[order]
-    for field_name in field_names:
-        if field_name in out:
-            arr = _as_3d(out, field_name)
-            out[field_name] = arr[order]
-    if "count" in out:
-        count = np.asarray(out["count"])
-        if count.ndim >= 1 and count.shape[0] == len(order):
-            out["count"] = count[order]
+    for name, values in list(out.items()):
+        if name in {"ls", "lat", "lon", "data_type", "mars_year", "source_file", "raw_3h_source_file"}:
+            continue
+        arr = np.asarray(values)
+        if arr.ndim >= 1 and arr.shape[0] == len(order):
+            out[name] = arr[order]
     return out
 
 
 class UserMcdOverviewDataView:
     """DataService-like adapter for one uploaded MCD overview dataset."""
 
-    def __init__(self, upload_id: int, mars_year: int, data: dict):
+    def __init__(self, upload_id: int, mars_year: int, data: dict, hourly_data: dict | None = None):
         self.upload_id = int(upload_id)
         self.mars_year = int(mars_year)
         self._data = _sort_by_ls(data, ["o3col", *OVERVIEW_ENV_FIELDS])
+        self._hourly_data = _sort_by_ls(hourly_data or {}, ["O3COL_hourly", "o3col_hourly"]) if hourly_data else {}
 
     def _check_year(self, mars_year: int) -> None:
         if int(mars_year) != self.mars_year:
@@ -76,10 +75,8 @@ class UserMcdOverviewDataView:
     def get_mcd_data(self, mars_year: int) -> dict:
         self._check_year(mars_year)
         out = self.get_aligned_mcd_data(mars_year)
-        for field_name in OVERVIEW_ENV_FIELDS:
-            hourly_name = f"{field_name}_hourly"
-            if hourly_name in self._data:
-                out[hourly_name] = self._data[hourly_name]
+        if self._hourly_data:
+            out.update(self._hourly_data)
         return out
 
     def get_available_years(self) -> list[int]:

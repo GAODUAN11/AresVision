@@ -79,6 +79,33 @@ def _write_overview_file(path: Path, offset: float) -> None:
             var[:] = base + delta
 
 
+def _write_raw_3h_mcd_file(path: Path, offset: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with netCDF4.Dataset(str(path), "w", format="NETCDF4") as ds:
+        ds.createDimension("time", 10)
+        ds.createDimension("lat", 37)
+        ds.createDimension("lon", 72)
+
+        ls = ds.createVariable("LS", "f4", ("time",))
+        lat = ds.createVariable("lat", "f4", ("lat",))
+        lon = ds.createVariable("lon", "f4", ("lon",))
+        ls[:] = np.linspace(offset, offset + 1.0, 10, dtype=np.float32) % 360.0
+        lat[:] = np.linspace(90.0, -90.0, 37, dtype=np.float32)
+        lon[:] = np.linspace(-180.0, 175.0, 72, dtype=np.float32)
+
+        base = np.arange(10 * 37 * 72, dtype=np.float32).reshape(10, 37, 72) + offset
+        for var_name, delta in {
+            "O3COL": 0.0,
+            "U": 10.0,
+            "T": 20.0,
+            "V": 30.0,
+            "FSDS": 40.0,
+        }.items():
+            var = ds.createVariable(var_name, "f4", ("time", "lat", "lon"))
+            var[:] = base + delta
+        ds["O3COL"].units = "um-atm"
+
+
 def test_official_training_loader_builds_tensors_from_mcd_overview(tmp_path):
     workspace_tmp = BACKEND_DIR / ".test_tmp" / f"training_loader_{uuid.uuid4().hex}"
     overview_dir = workspace_tmp / "mcd_overview"
@@ -114,3 +141,40 @@ def test_official_training_loader_builds_tensors_from_mcd_overview(tmp_path):
     assert list(ls_torch.shape) == [9, 2]
     assert height == 2
     assert width == 3
+
+
+def test_official_training_loader_builds_tensors_from_raw_3h_mcd_dataset(tmp_path):
+    workspace_tmp = BACKEND_DIR / ".test_tmp" / f"training_loader_raw_{uuid.uuid4().hex}"
+    raw_dir = workspace_tmp / "MCD_Output_global_10m_ls_lst"
+    first_file = raw_dir / "MCD_MY24_global_3h_5deg_10m_ls_lst.nc"
+    second_file = raw_dir / "MCD_MY25_global_3h_5deg_10m_ls_lst.nc"
+    _write_raw_3h_mcd_file(first_file, 0.0)
+    _write_raw_3h_mcd_file(second_file, 2.0)
+
+    try:
+        demo3 = _load_demo3_module()
+
+        x_torch, ls_torch, y_torch, height, width = demo3.prepare_training_tensors(
+            openmars_dir=workspace_tmp / "openmars",
+            mcd_dir=workspace_tmp / "MCD",
+            mcd_overview_dir=raw_dir,
+            selected_channels=["U", "D", "T"],
+            window=2,
+            horizon=2,
+            training_dataset="mcd_overview",
+        )
+    finally:
+        if first_file.exists():
+            first_file.unlink()
+        if second_file.exists():
+            second_file.unlink()
+        if raw_dir.exists():
+            raw_dir.rmdir()
+        if workspace_tmp.exists():
+            workspace_tmp.rmdir()
+
+    assert list(x_torch.shape) == [17, 2, 4, 36, 72]
+    assert list(y_torch.shape) == [17, 2, 1, 36, 72]
+    assert list(ls_torch.shape) == [17, 2]
+    assert height == 36
+    assert width == 72

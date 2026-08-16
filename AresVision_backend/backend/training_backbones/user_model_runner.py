@@ -23,7 +23,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from config import MCD_DIR
+from config import MCD_DIR, MCD_RAW_3H_DIR
+from services.ozone_units import normalize_ozone_column_units
 from services.transfer_learning_strategy import apply_freeze_strategy
 
 CHANNEL_ORDER = ["U", "V", "D", "S", "T"]
@@ -37,6 +38,13 @@ MCD_VARS_MAP = {
     "S": ("Solar_Flux_DN", "fluxsurf_dn_sw"),
     "T": ("Temperature", "temp"),
 }
+RAW_MCD_FIELD_MAP = {
+    "U_Wind": "U",
+    "V_Wind": "V",
+    "Solar_Flux_DN": "FSDS",
+    "Temperature": "T",
+}
+RAW_MCD_TARGET_LAT = np.arange(87.5, -90.0, -5.0, dtype=np.float32)
 
 
 def parse_json_arg(value: Any) -> dict[str, Any]:
@@ -380,6 +388,107 @@ def _load_mcd_overview(
     )
 
 
+def _read_raw_mcd_ls_variable(dataset: Any, file_path: Path) -> np.ndarray:
+    for name in ("LS", "Ls", "ls"):
+        if name in dataset.variables:
+            return _clean_array(dataset.variables[name][:]).reshape(-1)
+    raise ValueError(f"Missing LS variable in raw MCD file {file_path}")
+
+
+def _fit_raw_mcd_lat_grid(data: Any, lat_values: Any) -> np.ndarray:
+    field = _clean_array(data)
+    if field.ndim != 3:
+        raise ValueError(f"Expected raw MCD field to be 3D, got shape {field.shape}")
+
+    lat = np.asarray(lat_values, dtype=np.float32).reshape(-1)
+    if field.shape[1] == RAW_MCD_TARGET_LAT.shape[0]:
+        return field[:, :, :72]
+
+    if field.shape[1] == RAW_MCD_TARGET_LAT.shape[0] + 1 and lat.shape[0] == field.shape[1]:
+        diffs = np.diff(lat)
+        if np.allclose(np.abs(diffs), 5.0, atol=1e-3):
+            if lat[0] > lat[-1]:
+                return ((field[:, :-1, :] + field[:, 1:, :]) * 0.5).astype(np.float32)[:, :, :72]
+            return ((field[:, :-1, :] + field[:, 1:, :]) * 0.5).astype(np.float32)[:, ::-1, :72]
+
+    order = np.argsort(lat)
+    lat_sorted = lat[order]
+    field_sorted = field[:, order, :]
+    flat = field_sorted.transpose(0, 2, 1).reshape(-1, field.shape[1])
+    out_flat = np.empty((flat.shape[0], RAW_MCD_TARGET_LAT.shape[0]), dtype=np.float32)
+    for index, row in enumerate(flat):
+        out_flat[index] = np.interp(RAW_MCD_TARGET_LAT, lat_sorted, row).astype(np.float32)
+    return out_flat.reshape(field.shape[0], field.shape[2], RAW_MCD_TARGET_LAT.shape[0]).transpose(0, 2, 1)[:, :, :72]
+
+
+def _load_raw_3h_mcd(
+    raw_dir: Path,
+    selected_channels: list[str],
+) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    y_parts: list[np.ndarray] = []
+    ls_parts: list[np.ndarray] = []
+    feature_parts = {MCD_VARS_MAP[channel][1]: [] for channel in selected_channels}
+
+    for file_path in sorted(Path(raw_dir).glob("*.nc"), key=natural_sort_key):
+        with netCDF4.Dataset(str(file_path)) as dataset:
+            if "O3COL" not in dataset.variables:
+                continue
+            if "lat" not in dataset.variables:
+                raise ValueError(f"Raw MCD file {file_path} is missing lat")
+
+            lat_values = dataset.variables["lat"][:]
+            y = normalize_ozone_column_units(
+                _fit_raw_mcd_lat_grid(dataset.variables["O3COL"][:], lat_values),
+                getattr(dataset.variables["O3COL"], "units", None),
+                allow_mcd_legacy_heuristic=True,
+            )
+            y_parts.append(_clean_array(y))
+            ls_parts.append(_read_raw_mcd_ls_variable(dataset, file_path))
+
+            for channel in selected_channels:
+                var_name, short_name = MCD_VARS_MAP[channel]
+                raw_name = RAW_MCD_FIELD_MAP.get(var_name)
+                if raw_name is None:
+                    feature_parts[short_name].append(np.zeros_like(y, dtype=np.float32))
+                    continue
+                if raw_name not in dataset.variables:
+                    raise ValueError(f"Raw MCD file {file_path} is missing variable: {raw_name}")
+                feature_parts[short_name].append(_fit_raw_mcd_lat_grid(dataset.variables[raw_name][:], lat_values))
+
+    if not y_parts:
+        raise FileNotFoundError(f"No raw 3h MCD .nc files found in {raw_dir}")
+
+    y_raw = _clean_array(np.concatenate(y_parts, axis=0))
+    ls_raw = _clean_array(np.concatenate(ls_parts, axis=0)).reshape(-1)
+    vars_dict = {
+        short_name: _clean_array(np.concatenate(parts, axis=0))
+        for short_name, parts in feature_parts.items()
+    }
+    time_count = min([int(y_raw.shape[0]), int(ls_raw.shape[0])] + [int(v.shape[0]) for v in vars_dict.values()])
+    if time_count <= 0:
+        raise ValueError("Raw 3h MCD timeline is empty")
+    return (
+        y_raw[:time_count],
+        ls_raw[:time_count],
+        {name: value[:time_count] for name, value in vars_dict.items()},
+    )
+
+
+def _load_mcd_full_training_dataset(
+    data_dir: Path,
+    selected_channels: list[str],
+) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    has_raw_files = False
+    for file_path in sorted(Path(data_dir).glob("*.nc"), key=natural_sort_key):
+        with netCDF4.Dataset(str(file_path)) as dataset:
+            if "O3COL" in dataset.variables:
+                has_raw_files = True
+                break
+    if has_raw_files:
+        return _load_raw_3h_mcd(data_dir, selected_channels)
+    return _load_mcd_overview(data_dir, selected_channels)
+
+
 def prepare_tensors(
     openmars_dir: Any,
     mcd_dir: Any,
@@ -398,7 +507,7 @@ def prepare_tensors(
 
     if dataset == TRAINING_DATASET_MCD_OVERVIEW:
         overview_dir = Path(mcd_overview_dir or (BACKEND_DIR / "data" / "mcd_overview"))
-        y_raw, _ls_raw, vars_dict = _load_mcd_overview(overview_dir, selected)
+        y_raw, _ls_raw, vars_dict = _load_mcd_full_training_dataset(overview_dir, selected)
     else:
         y_raw, om_ls_raw = _load_openmars(Path(openmars_dir))
         vars_dict = _load_mcd_features(Path(mcd_dir), selected, om_ls_raw)
@@ -524,7 +633,15 @@ def main() -> None:
     training_dataset = normalize_training_dataset(args.training_dataset)
     openmars_dir = Path(os.environ.get("ARESVISION_OPENMARS_DIR", str(BACKEND_DIR / "data" / "openmars")))
     mcd_dir = Path(MCD_DIR)
-    mcd_overview_dir = Path(os.environ.get("ARESVISION_MCD_OVERVIEW_DIR", str(BACKEND_DIR / "data" / "mcd_overview")))
+    mcd_overview_dir = Path(
+        os.environ.get(
+            "MCD_RAW_3H_DIR",
+            os.environ.get(
+                "ARESVISION_MCD_RAW_3H_DIR",
+                str(MCD_RAW_3H_DIR),
+            ),
+        )
+    )
     x_torch, y_torch, y_mean, y_std, height, width = prepare_tensors(
         openmars_dir,
         mcd_dir,

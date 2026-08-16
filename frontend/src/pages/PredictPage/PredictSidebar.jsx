@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 import C from '../../constants/colors';
 import { useT } from '../../i18n';
 import GlowCard from '../../components/GlowCard';
@@ -92,6 +94,179 @@ function ActionButton({ children, secondary = false, disabled = false, onClick, 
   );
 }
 
+function TrainedModelDropdown({
+  options,
+  value,
+  onChange,
+  disabled,
+  loading,
+  isLight,
+  isZh,
+}) {
+  const rootRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.id === Number(value)) || null;
+  const hasOptions = options.length > 0;
+  const isDisabled = disabled || loading || !hasOptions;
+  const displayText = loading
+    ? (isZh ? '正在加载训练模型...' : 'Loading trained models...')
+    : selectedOption
+      ? `${selectedOption.label} · #${selectedOption.id}`
+      : (isZh ? '选择已完成训练模型' : 'Select a completed model');
+  const panelBg = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(8,18,31,0.98)';
+  const itemBg = isLight ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.035)';
+  const activeBg = isLight ? 'rgba(74,158,255,0.13)' : 'rgba(74,158,255,0.15)';
+
+  useEffect(() => {
+    if (isDisabled) setOpen(false);
+  }, [isDisabled]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleOutsideClick = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') setOpen(false);
+      }}
+      style={{ position: 'relative', width: '100%', minWidth: 0, zIndex: open ? 70 : 'auto' }}
+    >
+      <button
+        type="button"
+        disabled={isDisabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((valueNow) => !valueNow)}
+        style={{
+          width: '100%',
+          minWidth: 0,
+          minHeight: 52,
+          boxSizing: 'border-box',
+          padding: '11px 12px',
+          borderRadius: 12,
+          border: `1px solid ${open ? 'rgba(121,187,255,0.62)' : C.border}`,
+          background: isLight ? 'rgba(255,255,255,0.92)' : C.bgMuted,
+          color: hasOptions ? C.ice : C.ice50,
+          fontSize: 'calc(12px * var(--font-scale, 1))',
+          fontWeight: 800,
+          fontFamily: 'var(--font-body)',
+          outline: 'none',
+          cursor: isDisabled ? 'not-allowed' : 'pointer',
+          opacity: isDisabled ? 0.72 : 1,
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
+          alignItems: 'center',
+          gap: 10,
+          textAlign: 'left',
+          boxShadow: open ? '0 0 0 3px rgba(121,187,255,0.12)' : 'none',
+          transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayText}
+        </span>
+        <KeyboardArrowDownRoundedIcon
+          aria-hidden="true"
+          sx={{
+            color: open ? C.blue : C.ice60,
+            fontSize: 18,
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.18s ease, color 0.18s ease',
+            flexShrink: 0,
+          }}
+        />
+      </button>
+
+      {open ? (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 'calc(100% + 8px)',
+            zIndex: 80,
+            padding: 8,
+            boxSizing: 'border-box',
+            borderRadius: 12,
+            border: '1px solid rgba(121,187,255,0.34)',
+            background: panelBg,
+            boxShadow: isLight
+              ? '0 18px 42px rgba(15,23,42,0.18)'
+              : '0 18px 42px rgba(0,0,0,0.48), 0 0 0 1px rgba(121,187,255,0.08)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            maxHeight: 260,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          }}
+        >
+          {options.map((option) => {
+            const active = option.id === Number(value);
+            const summary = buildCompareModelSummary(option.task);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  padding: '10px 11px',
+                  borderRadius: 10,
+                  border: `1px solid ${active ? 'rgba(121,187,255,0.42)' : 'transparent'}`,
+                  background: active ? activeBg : 'transparent',
+                  color: C.ice,
+                  cursor: 'pointer',
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  gap: 10,
+                  alignItems: 'center',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={(event) => {
+                  if (!active) event.currentTarget.style.background = itemBg;
+                }}
+                onMouseLeave={(event) => {
+                  if (!active) event.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'calc(12px * var(--font-scale, 1))', fontWeight: 800 }}>
+                    {option.label}
+                  </span>
+                  <span style={{ display: 'block', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.ice50, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.45 }}>
+                    #{summary.taskId} · {summary.architecture} · {summary.inputChannelText}
+                  </span>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.ice40, fontSize: 'calc(10px * var(--font-scale, 1))', lineHeight: 1.45 }}>
+                    {summary.modelSource} · W{summary.window || '--'} · H{summary.horizon || '--'} · {summary.dataSource}
+                  </span>
+                </span>
+                {active ? (
+                  <CheckRoundedIcon aria-hidden="true" sx={{ color: C.blue, fontSize: 16, flexShrink: 0 }} />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ModelSourceControl({
   modelMode,
   setModelMode,
@@ -164,35 +339,15 @@ function ModelSourceControl({
 
       {modelMode === PREDICT_MODEL_MODE_TRAINED ? (
         <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
-          <select
+          <TrainedModelDropdown
+            options={trainingModelOptions}
             value={selectedTrainingTaskId || ''}
             disabled={requestContextLocked || trainingTasksLoading || !hasTrainingModels}
-            onChange={(event) => setSelectedTrainingTaskId(Number(event.target.value) || null)}
-            style={{
-              width: '100%',
-              minWidth: 0,
-              padding: '11px 12px',
-              borderRadius: 12,
-              border: `1px solid ${C.border}`,
-              background: isLight ? 'rgba(255,255,255,0.92)' : C.bgMuted,
-              color: hasTrainingModels ? C.ice : C.ice50,
-              fontSize: 'calc(12px * var(--font-scale, 1))',
-              fontWeight: 600,
-              fontFamily: 'var(--font-body)',
-              outline: 'none',
-            }}
-          >
-            <option value="">
-              {trainingTasksLoading
-                ? (isZh ? '正在加载训练模型...' : 'Loading trained models...')
-                : (isZh ? '选择已完成训练模型' : 'Select a completed model')}
-            </option>
-            {trainingModelOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label} · #{option.id}
-              </option>
-            ))}
-          </select>
+            loading={trainingTasksLoading}
+            isLight={isLight}
+            isZh={isZh}
+            onChange={(nextId) => setSelectedTrainingTaskId(Number(nextId) || null)}
+          />
 
           <div style={{ fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice50, lineHeight: 1.55 }}>
             {hasTrainingModels

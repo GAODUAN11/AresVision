@@ -144,6 +144,30 @@ function getStatusMeta(status, t) {
   };
 }
 
+function getLogLineTone(line) {
+  const value = String(line || '').toLowerCase();
+  if (value.includes('traceback') || value.includes('error') || value.includes('failed') || value.includes('exception')) {
+    return 'error';
+  }
+  if (value.includes('warning') || value.includes('warn')) {
+    return 'warning';
+  }
+  if (
+    value.includes('epoch') ||
+    value.includes('loss') ||
+    value.includes('mse') ||
+    value.includes('rmse') ||
+    value.includes('mae') ||
+    value.includes('r-squared')
+  ) {
+    return 'metric';
+  }
+  if (value.includes('started') || value.includes('training') || value.includes('[step')) {
+    return 'info';
+  }
+  return 'default';
+}
+
 function formatHyperValue(key, value, t) {
   if (Array.isArray(value)) return value.join(' / ');
   if (value && typeof value === 'object') return JSON.stringify(value);
@@ -601,6 +625,7 @@ export default function ModelTrainingPage() {
   const [scriptsError, setScriptsError] = useState('');
   const logContainerRef = useRef(null);
   const autoScrollRef = useRef(true);
+  const [autoScrollPinned, setAutoScrollPinned] = useState(true);
 
   const channelOrder = useMemo(() => ['U', 'V', 'D', 'S', 'T'], []);
   const channelMap = useMemo(
@@ -736,6 +761,9 @@ export default function ModelTrainingPage() {
       liveLogsHint: isZh
         ? '选择历史任务即可切换当前查看的日志和进度。'
         : 'Select a training record to switch the active logs and progress view.',
+      logLines: (count) => (isZh ? `${count} 行` : `${count} lines`),
+      autoScrollOn: isZh ? '自动跟随' : 'Auto-follow',
+      autoScrollPaused: isZh ? '已暂停跟随' : 'Follow paused',
       progressHint: isZh
         ? '进度、损失和日志会在这里持续刷新。'
         : 'Progress, loss, and logs refresh here while a task is active.',
@@ -1352,7 +1380,9 @@ export default function ModelTrainingPage() {
 
   const handleScroll = (event) => {
     const { scrollTop, scrollHeight, clientHeight } = event.target;
-    autoScrollRef.current = scrollHeight - scrollTop - clientHeight < 50;
+    const pinned = scrollHeight - scrollTop - clientHeight < 50;
+    autoScrollRef.current = pinned;
+    setAutoScrollPinned(pinned);
   };
 
   const handleStartTraining = async () => {
@@ -1563,6 +1593,7 @@ export default function ModelTrainingPage() {
           grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
           gap: 24px;
           align-items: stretch;
+          height: clamp(620px, calc(100vh - 112px), 720px);
         }
         .model-training-section + .model-training-section {
           margin-top: 16px;
@@ -1604,9 +1635,171 @@ export default function ModelTrainingPage() {
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 8px;
         }
+        .model-training-controls-card {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-height: 0;
+          overflow: hidden;
+        }
+        .model-training-controls-card .model-training-stack {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding-right: 2px;
+        }
+        .model-training-status-card {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-height: 0;
+          overflow-x: hidden;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+        }
+        .model-training-log-section {
+          flex: 1 0 300px;
+          display: flex;
+          flex-direction: column;
+          min-height: 300px;
+        }
+        .model-training-log-panel {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 260px;
+          border-radius: 18px;
+          border: 1px solid var(--border);
+          overflow: hidden;
+        }
+        .model-training-log-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border);
+          flex-wrap: wrap;
+        }
+        .model-training-log-toolbar-left,
+        .model-training-log-toolbar-right {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        .model-training-log-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          flex: 0 0 auto;
+        }
+        .model-training-log-chip {
+          display: inline-flex;
+          align-items: center;
+          min-height: 26px;
+          padding: 5px 9px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.08);
+          font-size: calc(11px * var(--font-scale, 1));
+          line-height: 1.2;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        .model-training-log-scroll {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding: 10px 0;
+          font-family: ${MONO_FONT};
+          font-size: calc(12px * var(--font-scale, 1));
+          line-height: 1.58;
+          font-variant-numeric: tabular-nums;
+          white-space: pre-wrap;
+        }
+        .model-training-log-scroll.is-empty {
+          display: grid;
+          place-items: center;
+          padding: 26px;
+        }
+        .model-training-log-scroll::-webkit-scrollbar {
+          width: 10px;
+        }
+        .model-training-log-scroll::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: rgba(125, 154, 188, 0.28);
+          border: 2px solid transparent;
+          background-clip: padding-box;
+        }
+        .model-training-log-row {
+          display: grid;
+          grid-template-columns: 52px minmax(0, 1fr);
+          gap: 12px;
+          padding: 4px 14px;
+          border-left: 2px solid transparent;
+        }
+        .model-training-log-row:hover {
+          background: rgba(74, 158, 255, 0.06);
+        }
+        .model-training-log-row[data-tone="error"] {
+          border-left-color: rgba(217, 92, 92, 0.88);
+          background: rgba(217, 92, 92, 0.06);
+        }
+        .model-training-log-row[data-tone="warning"] {
+          border-left-color: rgba(200, 148, 72, 0.82);
+        }
+        .model-training-log-row[data-tone="metric"] {
+          border-left-color: rgba(74, 207, 172, 0.82);
+        }
+        .model-training-log-row[data-tone="info"] {
+          border-left-color: rgba(74, 158, 255, 0.72);
+        }
+        .model-training-log-gutter {
+          color: rgba(154, 174, 199, 0.56);
+          text-align: right;
+          user-select: none;
+        }
+        .model-training-log-text {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+        .model-training-log-empty {
+          max-width: 480px;
+          text-align: center;
+          display: grid;
+          gap: 10px;
+          justify-items: center;
+          font-family: var(--font-body);
+          line-height: 1.7;
+        }
+        .model-training-log-empty-mark {
+          width: 36px;
+          height: 36px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-family: ${MONO_FONT};
+          font-size: calc(15px * var(--font-scale, 1));
+          font-weight: 800;
+        }
         @media (max-width: 1180px) {
           .model-training-grid {
             grid-template-columns: 1fr;
+            height: auto;
+          }
+          .model-training-controls-card,
+          .model-training-status-card {
+            height: auto;
+            overflow: visible;
+          }
+          .model-training-controls-card .model-training-stack {
+            overflow: visible;
+            padding-right: 0;
+          }
+          .model-training-log-panel {
+            min-height: 320px;
           }
         }
         @media (max-width: 760px) {
@@ -1665,8 +1858,8 @@ export default function ModelTrainingPage() {
 
         <div className="model-training-grid">
           <section
-            className="glass-card"
-            style={{ padding: 22, display: 'flex', flexDirection: 'column', height: '100%' }}
+            className="glass-card model-training-controls-card"
+            style={{ padding: 22 }}
           >
             <div className="model-training-stack" style={{ flex: 1, minHeight: 0 }}>
               <div
@@ -2525,7 +2718,7 @@ export default function ModelTrainingPage() {
             </div>
           </section>
 
-          <section className="glass-card" style={{ padding: 26 }}>
+          <section className="glass-card model-training-status-card" style={{ padding: 26 }}>
             <div
               style={{
                 display: 'flex',
@@ -2588,7 +2781,7 @@ export default function ModelTrainingPage() {
 
             <LossEvolutionChart lossHistory={progressData?.loss_history} isLight={isLight} />
 
-            <div className="model-training-section">
+            <div className="model-training-section model-training-log-section">
               <div
                 style={{
                   display: 'flex',
@@ -2626,39 +2819,109 @@ export default function ModelTrainingPage() {
               </div>
 
               <div
+                className="model-training-log-panel"
+                style={{
+                  background: isLight ? 'rgba(246,248,252,0.98)' : 'rgba(8,12,18,0.95)',
+                  borderColor: C.border,
+                  boxShadow: isLight
+                    ? 'inset 0 1px 0 rgba(255,255,255,0.92)'
+                    : 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+              >
+                <div
+                  className="model-training-log-toolbar"
+                  style={{
+                    background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.025)',
+                    borderBottomColor: C.border,
+                  }}
+                >
+                  <div className="model-training-log-toolbar-left">
+                    <span
+                      className="model-training-log-dot"
+                      style={{ background: activeTaskId ? activeStatusMeta.color : C.ice40 }}
+                    />
+                    <span
+                      style={{
+                        color: C.ice,
+                        fontSize: 'calc(12px * var(--font-scale, 1))',
+                        fontWeight: 800,
+                      }}
+                    >
+                      {activeTaskId ? `task #${activeTaskId}` : copy.selectedTask}
+                    </span>
+                  </div>
+                  <div className="model-training-log-toolbar-right">
+                    <span
+                      className="model-training-log-chip"
+                      style={{
+                        color: C.ice60,
+                        background: isLight ? 'rgba(23,33,47,0.04)' : 'rgba(255,255,255,0.035)',
+                        borderColor: C.border,
+                      }}
+                    >
+                      {copy.logLines(logs.length)}
+                    </span>
+                    <span
+                      className="model-training-log-chip"
+                      style={{
+                        color: autoScrollPinned ? C.green : '#c89448',
+                        background: autoScrollPinned ? 'rgba(74,207,172,0.10)' : 'rgba(200,148,72,0.10)',
+                        borderColor: autoScrollPinned ? 'rgba(74,207,172,0.18)' : 'rgba(200,148,72,0.20)',
+                      }}
+                    >
+                      {autoScrollPinned ? copy.autoScrollOn : copy.autoScrollPaused}
+                    </span>
+                  </div>
+                </div>
+                <div
                 ref={logContainerRef}
                 onScroll={handleScroll}
+                className={`model-training-log-scroll ${!activeTaskId || logs.length === 0 ? 'is-empty' : ''}`}
                 style={{
-                  minHeight: 240,
-                  maxHeight: 360,
-                  overflowY: 'auto',
-                  borderRadius: 16,
-                  padding: 16,
-                  background: isLight ? 'rgba(246,248,252,0.98)' : 'rgba(11,15,21,0.94)',
-                  border: `1px solid ${C.border}`,
                   color: isLight ? 'rgba(23,33,47,0.90)' : C.ice80,
-                  fontFamily: MONO_FONT,
-                  fontSize: 'calc(12px * var(--font-scale, 1))',
-                  lineHeight: 1.7,
-                  whiteSpace: 'pre-wrap',
-                  fontVariantNumeric: 'tabular-nums',
                 }}
               >
                 {!activeTaskId ? (
-                  <div style={{ color: C.ice50, fontStyle: 'italic', fontFamily: 'var(--font-body)' }}>
+                  <div className="model-training-log-empty" style={{ color: C.ice50 }}>
+                    <div
+                      className="model-training-log-empty-mark"
+                      style={{
+                        color: C.blue,
+                        background: isLight ? 'rgba(74,158,255,0.10)' : 'rgba(74,158,255,0.12)',
+                        border: `1px solid ${C.border}`,
+                      }}
+                    >
+                      --
+                    </div>
                     {copy.noTaskSelectedHint}
                   </div>
                 ) : logs.length > 0 ? (
                   logs.map((line, index) => (
-                    <div key={`${index}`} style={{ marginBottom: 2 }}>
-                      {line}
+                    <div
+                      key={`${index}`}
+                      className="model-training-log-row"
+                      data-tone={getLogLineTone(line)}
+                    >
+                      <span className="model-training-log-gutter">{String(index + 1).padStart(3, '0')}</span>
+                      <span className="model-training-log-text">{line}</span>
                     </div>
                   ))
                 ) : (
-                  <div style={{ color: C.ice50, fontStyle: 'italic', fontFamily: 'var(--font-body)' }}>
+                  <div className="model-training-log-empty" style={{ color: C.ice50 }}>
+                    <div
+                      className="model-training-log-empty-mark"
+                      style={{
+                        color: activeStatusMeta.color,
+                        background: activeStatusMeta.tint,
+                        border: `1px solid ${activeStatusMeta.border}`,
+                      }}
+                    >
+                      ...
+                    </div>
                     {copy.noLogsYet}
                   </div>
                 )}
+                </div>
               </div>
             </div>
           </section>

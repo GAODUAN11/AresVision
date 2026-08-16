@@ -29,6 +29,7 @@ import {
   createDefaultArchitectureParamsByModel,
   getModelStructureConfig,
   getModelStructureParamLabel,
+  getTransferFreezeModes,
   isRecurrentArchitecture,
   TRAINING_DATASET_MCD_OVERVIEW,
   TRAINING_DATASET_OPENMARS_MCD,
@@ -813,6 +814,18 @@ export default function ModelTrainingPage() {
     .replace('：', '')
     .trim();
   const baselineLabel = t('modelTraining.baselineO3');
+  const availableTransferFreezeModes = useMemo(
+    () => getTransferFreezeModes(modelSource),
+    [modelSource]
+  );
+  const transferFreezeModeLabels = useMemo(
+    () => ({
+      none: copy.freezeNone,
+      backbone: copy.freezeBackbone,
+      head: copy.freezeHead,
+    }),
+    [copy.freezeBackbone, copy.freezeHead, copy.freezeNone]
+  );
 
   const selectedChannelsSummary = useMemo(() => {
     if (selectedChannels.length === 0) return copy.channelSummaryEmpty;
@@ -1326,6 +1339,12 @@ export default function ModelTrainingPage() {
   };
 
   useEffect(() => {
+    if (!availableTransferFreezeModes.includes(transferFreezeMode)) {
+      setTransferFreezeMode('none');
+    }
+  }, [availableTransferFreezeModes, transferFreezeMode]);
+
+  useEffect(() => {
     if (autoScrollRef.current && logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
@@ -1387,6 +1406,7 @@ export default function ModelTrainingPage() {
         selectedChannels,
         channelOrder,
         modelArchitecture: normalizeModelArchitecture(modelArchitecture),
+        modelSource,
         useSphere,
         architectureParamsByModel,
         trainingDataset,
@@ -2089,9 +2109,11 @@ export default function ModelTrainingPage() {
                             value={transferFreezeMode}
                             onChange={(event) => setTransferFreezeMode(event.target.value)}
                           >
-                            <option value="none">{copy.freezeNone}</option>
-                            <option value="backbone">{copy.freezeBackbone}</option>
-                            <option value="head">{copy.freezeHead}</option>
+                            {availableTransferFreezeModes.map((mode) => (
+                              <option key={mode} value={mode}>
+                                {transferFreezeModeLabels[mode] || mode}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         <div>

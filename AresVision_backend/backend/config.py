@@ -39,7 +39,7 @@ MCD_DIR = resolve_mcd_dir(DATA_DIR, os.getenv("ARESVISION_MCD_DIR"))
 MCD_OVERVIEW_DIR = DATA_DIR / "mcd_overview"
 MCD_RAW_3H_DIR = Path(os.getenv(
     "MCD_RAW_3H_DIR",
-    BASE_DIR.parents[2] / "Data" / "MCD_Output_global_10m_ls_lst",
+    DATA_DIR / "MCD_Output_global_10m_ls_lst",
 ))
 NOMAD_DIR = DATA_DIR / "nomad"
 MODEL_DIR = BASE_DIR / "models" / "predrnnv2"

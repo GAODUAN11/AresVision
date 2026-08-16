@@ -141,6 +141,34 @@ def _write_overview_file(path: Path, offset: float) -> None:
             ds.createVariable(var_name, "f4", ("time", "lat", "lon"))[:] = base + delta
 
 
+def _write_raw_3h_mcd_file(path: Path, offset: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with netCDF4.Dataset(str(path), "w", format="NETCDF4") as ds:
+        ds.createDimension("time", 10)
+        ds.createDimension("lat", 37)
+        ds.createDimension("lon", 72)
+
+        ds.createVariable("LS", "f4", ("time",))[:] = np.linspace(
+            offset,
+            offset + 1.0,
+            10,
+            dtype=np.float32,
+        ) % 360.0
+        ds.createVariable("lat", "f4", ("lat",))[:] = np.linspace(90.0, -90.0, 37, dtype=np.float32)
+        ds.createVariable("lon", "f4", ("lon",))[:] = np.linspace(-180.0, 175.0, 72, dtype=np.float32)
+
+        base = np.arange(10 * 37 * 72, dtype=np.float32).reshape(10, 37, 72) + offset
+        for var_name, delta in {
+            "O3COL": 0.0,
+            "U": 10.0,
+            "T": 20.0,
+            "V": 30.0,
+            "FSDS": 40.0,
+        }.items():
+            ds.createVariable(var_name, "f4", ("time", "lat", "lon"))[:] = base + delta
+        ds["O3COL"].units = "um-atm"
+
+
 def test_parse_json_arg_accepts_dict_json_string_and_empty_values():
     assert parse_json_arg({"hidden_dim": 16}) == {"hidden_dim": 16}
     assert parse_json_arg('{"hidden_dim":16}') == {"hidden_dim": 16}
@@ -300,6 +328,40 @@ def test_prepare_tensors_builds_uploaded_runner_dataset_from_mcd_overview():
     assert width == 3
 
 
+def test_prepare_tensors_builds_uploaded_runner_dataset_from_raw_3h_mcd():
+    workspace_tmp = BACKEND_DIR / ".test_tmp" / f"uploaded_runner_raw_{uuid.uuid4().hex}"
+    raw_dir = workspace_tmp / "MCD_Output_global_10m_ls_lst"
+    first_file = raw_dir / "MCD_MY24_global_3h_5deg_10m_ls_lst.nc"
+    second_file = raw_dir / "MCD_MY25_global_3h_5deg_10m_ls_lst.nc"
+    _write_raw_3h_mcd_file(first_file, 0.0)
+    _write_raw_3h_mcd_file(second_file, 2.0)
+
+    try:
+        x_torch, y_torch, _y_mean, _y_std, height, width = prepare_tensors(
+            workspace_tmp / "openmars",
+            workspace_tmp / "MCD",
+            ["U", "D", "T"],
+            window=2,
+            horizon=2,
+            training_dataset="mcd_overview",
+            mcd_overview_dir=raw_dir,
+        )
+    finally:
+        if first_file.exists():
+            first_file.unlink()
+        if second_file.exists():
+            second_file.unlink()
+        if raw_dir.exists():
+            raw_dir.rmdir()
+        if workspace_tmp.exists():
+            workspace_tmp.rmdir()
+
+    assert list(x_torch.shape) == [17, 2, 4, 36, 72]
+    assert list(y_torch.shape) == [17, 2, 1, 36, 72]
+    assert height == 36
+    assert width == 72
+
+
 if __name__ == "__main__":
     test_parse_json_arg_accepts_dict_json_string_and_empty_values()
     test_build_uploaded_model_config_merges_core_custom_and_schema_defaults()
@@ -308,4 +370,5 @@ if __name__ == "__main__":
     test_assert_prediction_shape_accepts_matching_shapes_and_rejects_mismatches()
     test_bad_shape_uploaded_model_is_caught_by_prediction_shape_guard()
     test_prepare_tensors_builds_uploaded_runner_dataset_from_mcd_overview()
+    test_prepare_tensors_builds_uploaded_runner_dataset_from_raw_3h_mcd()
     print("uploaded model runner tests passed")

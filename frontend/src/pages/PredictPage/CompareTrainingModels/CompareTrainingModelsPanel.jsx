@@ -234,7 +234,7 @@ function MetricBars({ items, precision, isZh, plotTextColor, plotGridColor }) {
           plot_bgcolor: 'rgba(0,0,0,0)',
           font: { color: plotTextColor, family: 'var(--font-body)' },
           xaxis: { title: metricMeta.name, gridcolor: plotGridColor, zerolinecolor: plotGridColor },
-          yaxis: { automargin: true, autorange: 'reversed' },
+          yaxis: { type: 'category', automargin: true, autorange: 'reversed' },
           showlegend: false,
         }}
         config={{ displayModeBar: false, responsive: true }}

@@ -4,6 +4,7 @@ import SectionTitle from '../components/SectionTitle';
 import {
   TechStackBlock,
   DataSourcesBlock,
+  PlatformCapabilitiesBlock,
 } from './AboutPage/AboutComponents';
 
 export default function AboutPage() {
@@ -19,6 +20,7 @@ export default function AboutPage() {
 
       <TechStackBlock t={t} />
       <DataSourcesBlock t={t} />
+      <PlatformCapabilitiesBlock t={t} />
     </div>
   );
 }

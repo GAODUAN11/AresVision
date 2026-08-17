@@ -15,7 +15,7 @@ const zh = {
   },
 
   footer: {
-    copyright: '© 2025 AresVision 智绘赤星 · 全国大学生计算机应用能力大赛',
+    copyright: '© 2026 AresVision 智绘赤星 · 全国大学生计算机应用能力大赛',
     powered: '基于 OpenMARS · MCD 6.1 · PredRNNv2',
   },
 
@@ -1012,27 +1012,62 @@ const zh = {
     title: '关于项目',
     subtitle: '关于 AresVision',
     description:
-      '智绘赤星 (AresVision) 是一个面向火星大气科学研究的臭氧预测与可视化平台，' +
-      '基于 OpenMARS 再分析数据和 MCD 6.1 气候模拟数据，运用 PredRNNv2 时空深度学习模型' +
-      '实现火星全球臭氧柱浓度的多步预测。',
+      '智绘赤星 (AresVision) 是一个面向火星臭氧与大气环境研究的多源数据可视化、预测实验与 AI 解读平台。' +
+      '项目围绕 MCD 6.1、OpenMARS 与 NOMAD 三类数据源构建数据总览、个人上传治理、PredRNNv2 训练预测和 Ares Copilot 解读链路；' +
+      '用户上传数据主要服务数据总览可视化，训练与预测使用服务器后台维护的官方数据集和模型权重。',
+    techStackTitle: '技术栈',
+    dataSourcesTitle: '数据源与用途',
+    capabilitiesTitle: '平台能力',
     techCats: {
       frontend: '前端',
       backend: '后端',
       model: '模型',
       data: '数据',
     },
-    openmarsTitle: 'OpenMARS 再分析数据',
-    openmarsContent:
-      '变量：o3col（臭氧柱浓度, μm-atm）\n' +
-      '维度：Ls × lat(36) × lon(72) × lev(35)\n' +
-      '覆盖：MY27 完整年 (Ls 2°–360°)\n' +
-      '分辨率：5° 经纬网格',
-    mcdTitle: 'MCD 6.1 气候模拟数据',
-    mcdContent:
-      '变量：U/V Wind, Pressure, Temperature, DOD, Solar Flux\n' +
-      '维度：sol(669) × hour(8) × lat(36) × lon(72)\n' +
-      '覆盖：MY27 完整 (5352 时间步)\n' +
-      '时间对齐：Ls 插值到 OpenMARS 格点',
+    dataSources: {
+      mcd: {
+        title: 'MCD 6.1 气候模拟',
+        content:
+          '定位：火星气候数据库与环境驱动底座\n' +
+          '用途：数据总览整页 MCD 源、环境因子分析、昼夜变化\n' +
+          '链路：用户上传原始 3h MCD .nc 后生成 overview 缓存；昼夜变化直接读取 O3COL 3h 小时数据\n' +
+          '变量：O3COL、Temperature、Pressure、U/V Wind、Solar Flux、Dust Optical Depth',
+      },
+      openmars: {
+        title: 'OpenMARS 再分析',
+        content:
+          '定位：火星臭氧再分析与预测基准数据\n' +
+          '用途：训练/预测目标序列、数据总览多源对照、MCD-OpenMARS 差异分析\n' +
+          '链路：统一到 5° x 5° 全球网格，按太阳黄经 Ls 与 MCD 数据对齐\n' +
+          '核心变量：o3col 臭氧柱浓度',
+      },
+      nomad: {
+        title: 'NOMAD 观测验证',
+        content:
+          '定位：ExoMars TGO NOMAD 观测/反演臭氧数据\n' +
+          '用途：三维臭氧观测图层、MCD-NOMAD 验证、稀疏观测质量参考\n' +
+          '链路：接收网格化 o3col/count/Ls/lat/lon 数据，保留观测计数用于判断有效格点\n' +
+          '角色：为模拟与再分析结果提供观测约束',
+      },
+    },
+    capabilities: {
+      overview: {
+        title: '数据总览',
+        content: '提供 3D 火星球体、Ls 播放轴、多源臭氧叠加/差值/验证、二维图表、点位探针与昼夜变化分析。',
+      },
+      uploads: {
+        title: '数据管理',
+        content: '支持 MCD、OpenMARS、NOMAD .nc 上传；个人数据可进入数据总览，用户可选择贡献给官方源并由管理员审核。',
+      },
+      training: {
+        title: '模型训练与预测',
+        content: '基于 PredRNNv2/ST-LSTM 进行多步臭氧预测，支持通道选择、任务日志、测试集指标和预测残差分析。',
+      },
+      copilot: {
+        title: 'Ares Copilot',
+        content: '面向图表、表格和预测结果提供自然语言解读，帮助理解季节结构、空间差异、环境因子和模型表现。',
+      },
+    },
     teamRoles: ['全栈开发', '数据科学', 'UI/UX', '模型训练'],
     member: ({ n }) => `成员 ${n}`,
     competition: '全国大学生计算机应用能力大赛 · 大数据赛道',

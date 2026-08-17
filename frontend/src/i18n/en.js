@@ -15,7 +15,7 @@ const en = {
   },
 
   footer: {
-    copyright: '© 2025 AresVision · National College Computer Application Ability Competition',
+    copyright: '© 2026 AresVision · National College Computer Application Ability Competition',
     powered: 'Powered by OpenMARS · MCD 6.1 · PredRNNv2',
   },
 
@@ -992,27 +992,62 @@ const en = {
     title: 'About',
     subtitle: 'ABOUT ARESVISION',
     description:
-      'AresVision is an ozone prediction and visualization platform for Mars atmospheric science research. ' +
-      'Built on OpenMARS reanalysis data and MCD 6.1 climate simulation data, it employs the PredRNNv2 ' +
-      'spatiotemporal deep learning model to achieve multi-step prediction of global Mars ozone column concentration.',
+      'AresVision is a multi-source visualization, prediction, and AI interpretation platform for Mars ozone and atmospheric environment research. ' +
+      'The project connects MCD 6.1, OpenMARS, and NOMAD into Data Overview, personal upload governance, PredRNNv2 training/prediction, and Ares Copilot workflows. ' +
+      'User uploads mainly serve Data Overview visualization, while training and prediction use server-managed official datasets and model weights.',
+    techStackTitle: 'Technology Stack',
+    dataSourcesTitle: 'Data Sources and Roles',
+    capabilitiesTitle: 'Platform Capabilities',
     techCats: {
       frontend: 'Frontend',
       backend:  'Backend',
       model:    'Model',
       data:     'Data',
     },
-    openmarsTitle: 'OpenMARS Reanalysis Data',
-    openmarsContent:
-      'Variable: o3col (ozone column, μm-atm)\n' +
-      'Dimensions: Ls × lat(36) × lon(72) × lev(35)\n' +
-      'Coverage: MY27 full year (Ls 2°–360°)\n' +
-      'Resolution: 5° lat/lon grid',
-    mcdTitle: 'MCD 6.1 Climate Simulation Data',
-    mcdContent:
-      'Variables: U/V Wind, Pressure, Temperature, DOD, Solar Flux\n' +
-      'Dimensions: sol(669) × hour(8) × lat(36) × lon(72)\n' +
-      'Coverage: MY27 full (5352 time steps)\n' +
-      'Alignment: Ls-interpolated to OpenMARS grid',
+    dataSources: {
+      mcd: {
+        title: 'MCD 6.1 Climate Simulation',
+        content:
+          'Role: Mars Climate Database and environmental driver baseline\n' +
+          'Use: full-page MCD source for Data Overview, environmental analysis, and diurnal variation\n' +
+          'Pipeline: raw 3h MCD .nc uploads generate overview caches; diurnal charts read O3COL 3h hourly data directly\n' +
+          'Variables: O3COL, Temperature, Pressure, U/V Wind, Solar Flux, Dust Optical Depth',
+      },
+      openmars: {
+        title: 'OpenMARS Reanalysis',
+        content:
+          'Role: Mars ozone reanalysis and prediction baseline\n' +
+          'Use: training/prediction target series, multi-source Data Overview comparison, and MCD-OpenMARS difference analysis\n' +
+          'Pipeline: normalized to a 5° x 5° global grid and aligned with MCD by solar longitude Ls\n' +
+          'Core variable: o3col ozone column concentration',
+      },
+      nomad: {
+        title: 'NOMAD Observation Validation',
+        content:
+          'Role: ExoMars TGO NOMAD observation/retrieval ozone data\n' +
+          'Use: 3D ozone observation layer, MCD-NOMAD validation, and sparse observation quality reference\n' +
+          'Pipeline: accepts gridded o3col/count/Ls/lat/lon data and keeps observation counts for valid-cell checks\n' +
+          'Purpose: observational constraint for simulation and reanalysis results',
+      },
+    },
+    capabilities: {
+      overview: {
+        title: 'Data Overview',
+        content: 'Includes a 3D Mars globe, Ls playback, multi-source ozone overlay/difference/validation, 2D charts, point probes, and diurnal analysis.',
+      },
+      uploads: {
+        title: 'Data Management',
+        content: 'Supports MCD, OpenMARS, and NOMAD .nc uploads; personal data can feed Data Overview and may be contributed for admin review.',
+      },
+      training: {
+        title: 'Training and Prediction',
+        content: 'Uses PredRNNv2/ST-LSTM for multi-step ozone prediction with channel selection, task logs, test-set metrics, and residual analysis.',
+      },
+      copilot: {
+        title: 'Ares Copilot',
+        content: 'Provides natural-language interpretation for charts, tables, and prediction results across seasonal structure, spatial contrasts, drivers, and model behavior.',
+      },
+    },
     teamRoles: ['Full-Stack Dev', 'Data Science', 'UI/UX', 'Model Training'],
     member: ({ n }) => `Member ${n}`,
     competition: 'National College Computer Application Ability Competition — Big Data Track',

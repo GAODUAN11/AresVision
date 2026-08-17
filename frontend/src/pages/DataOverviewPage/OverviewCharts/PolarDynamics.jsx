@@ -4,7 +4,13 @@ import C from '../../../constants/colors';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewPolarDynamics } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+  summarizeInsightSeries,
+} from './aiInsight';
 import { movingAverageSeries } from './chartSeries';
 import { formatAdaptiveSeries } from './chartValueFormat';
 
@@ -84,18 +90,18 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
         }
       });
       if (bestIndex < 0) return { value: null, ls: null };
-      return { value: roundValue(series[bestIndex]), ls: roundValue(data.ls[bestIndex]) };
+      return { value: formatInsightValue(series[bestIndex]), ls: roundValue(data.ls[bestIndex]) };
     };
 
     return {
-      northOzoneStats: summarizeSeries(northOzone),
-      southOzoneStats: summarizeSeries(southOzone),
-      northTempStats: summarizeSeries(northTemp),
-      southTempStats: summarizeSeries(southTemp),
+      northOzoneStats: summarizeInsightSeries(northOzone),
+      southOzoneStats: summarizeInsightSeries(southOzone),
+      northTempStats: summarizeInsightSeries(northTemp),
+      southTempStats: summarizeInsightSeries(southTemp),
       northOzonePeak: findPeak(northOzone),
       southOzonePeak: findPeak(southOzone),
-      northOzoneSamples: sampleSeries(northOzone, data.ls, 8),
-      southOzoneSamples: sampleSeries(southOzone, data.ls, 8),
+      northOzoneSamples: sampleInsightSeries(northOzone, data.ls, 8),
+      southOzoneSamples: sampleInsightSeries(southOzone, data.ls, 8),
     };
   }, [data]);
 
@@ -119,10 +125,14 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
   const aiInsightProvider = useCallback(() => ({
     card: 'polar',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
+    valueMeaning: 'North and south polar O3 and temperature seasonal series; ozone is in μm-atm and temperature is in K.',
     status: loading ? 'loading' : (data?.ls?.length ? 'ready' : 'empty'),
     lsCount: data?.ls?.length || 0,
     north: diagnostics
       ? {
+        ozoneUnit: 'μm-atm',
+        tempUnit: 'K',
         ozoneStats: diagnostics.northOzoneStats,
         tempStats: diagnostics.northTempStats,
         ozonePeak: diagnostics.northOzonePeak,
@@ -131,13 +141,15 @@ export default function PolarDynamics({ marsYear, overviewSourceParams = {} }) {
       : null,
     south: diagnostics
       ? {
+        ozoneUnit: 'μm-atm',
+        tempUnit: 'K',
         ozoneStats: diagnostics.southOzoneStats,
         tempStats: diagnostics.southTempStats,
         ozonePeak: diagnostics.southOzonePeak,
         ozoneSamples: diagnostics.southOzoneSamples,
       }
       : null,
-  }), [data, diagnostics, loading, marsYear]);
+  }), [data, diagnostics, loading, marsYear, overviewSourceParams]);
 
   useAiInsightRegistration('polar', aiInsightProvider);
 

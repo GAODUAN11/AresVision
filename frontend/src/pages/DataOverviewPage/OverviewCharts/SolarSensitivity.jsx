@@ -4,7 +4,12 @@ import C from '../../../constants/colors';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { fetchOverviewSolarPhotochemical } from '../../../services/api';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { correlation, sampleSeries, summarizeSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  correlation,
+  sampleInsightSeries,
+  summarizeInsightSeries,
+} from './aiInsight';
 import { formatAdaptiveSeries } from './chartValueFormat';
 
 const BANDS = [
@@ -96,9 +101,11 @@ export default function SolarSensitivity({ marsYear, overviewSourceParams = {} }
     if (!data?.solar?.length || !data?.ozone?.length) return null;
     return {
       correlation: correlation(data.solar, data.ozone),
-      solarStats: summarizeSeries(data.solar),
-      ozoneStats: summarizeSeries(data.ozone),
-      samplePairs: sampleSeries(data.ozone, data.ls || [], 10).map((item) => {
+      solarUnit: 'W/m²',
+      ozoneUnit: 'μm-atm',
+      solarStats: summarizeInsightSeries(data.solar),
+      ozoneStats: summarizeInsightSeries(data.ozone),
+      samplePairs: sampleInsightSeries(data.ozone, data.ls || [], 10).map((item) => {
         const idx = item.index;
         return {
           ls: item.x,
@@ -112,12 +119,14 @@ export default function SolarSensitivity({ marsYear, overviewSourceParams = {} }
   const aiInsightProvider = useCallback(() => ({
     card: 'solarsens',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
     activeBand,
     activeBandLabel: copy.bands[activeBand] || activeBand,
+    valueMeaning: 'Seasonal association between downwelling solar flux and O3 for the selected latitude band; correlation is exploratory, not direct causality.',
     status: loading ? 'loading' : (data?.ozone?.length ? 'ready' : 'empty'),
     sampleCount: data?.ozone?.length || 0,
     diagnostics,
-  }), [activeBand, copy.bands, data, diagnostics, loading, marsYear]);
+  }), [activeBand, copy.bands, data, diagnostics, loading, marsYear, overviewSourceParams]);
 
   useAiInsightRegistration('solarsens', aiInsightProvider);
   const ozoneHoverText = useMemo(

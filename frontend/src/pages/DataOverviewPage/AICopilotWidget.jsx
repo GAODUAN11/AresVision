@@ -112,7 +112,6 @@ export default function AICopilotWidget() {
     intro: '我会读取这张图表当前控件状态与数据快照，再给出简明解读。',
     analyzing: '正在基于当前图表数据进行推理...',
     askBtn: 'AI 解读当前图表',
-    jumpBtn: '调取极端环境耦合分析',
     unnamed: '未命名图表',
     noSnapshot: '当前图表尚未返回可解读数据，可能仍在加载。',
     invalidReply: '本次解读未返回有效文本，请重试一次。',
@@ -133,7 +132,6 @@ export default function AICopilotWidget() {
     intro: 'I will read the current chart state and snapshot, then provide a concise interpretation.',
     analyzing: 'Reasoning over current chart snapshot...',
     askBtn: 'Interpret Current Chart',
-    jumpBtn: 'Open Extreme Coupling Analysis',
     unnamed: 'Unnamed Chart',
     noSnapshot: 'No readable snapshot from the current chart yet. It may still be loading.',
     invalidReply: 'No valid response returned this time. Please retry.',
@@ -151,7 +149,6 @@ Requirements:
 
   const {
     globalTimeLs,
-    setActiveAnalysisMode,
     activeAnalysisMode,
     leftPanelWidth,
     rightPanelWidth,
@@ -189,12 +186,6 @@ Requirements:
     if (!card) return expandedCard || copy.unnamed;
     return isZh ? card.zh : card.en;
   }, [copy.unnamed, expandedCard, isZh]);
-
-  const handleAction = () => {
-    setActiveAnalysisMode('dynamics');
-    setShowBubble(false);
-    setPulse(false);
-  };
 
   const handleAIChat = async () => {
     setIsAnalyzing(true);
@@ -357,24 +348,6 @@ Requirements:
                 onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent'; }}
               >
                 {copy.askBtn}
-              </button>
-
-              <button
-                onClick={handleAction}
-                style={{
-                  padding: 10,
-                  background: `linear-gradient(135deg, ${C.mars}, #ff8e53)`,
-                  border: 'none',
-                  borderRadius: 6,
-                  color: '#000',
-                  fontFamily: 'var(--font-body)',
-                  fontSize: 'calc(12px * var(--font-scale, 1))',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: '0 0 12px rgba(199,91,57,0.4)',
-                }}
-              >
-                {copy.jumpBtn}
               </button>
             </div>
           )}

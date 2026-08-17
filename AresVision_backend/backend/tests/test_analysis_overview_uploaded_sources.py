@@ -81,6 +81,24 @@ class FakeUserDataService:
             }
         raise ValueError("missing upload")
 
+    async def get_loaded_mcd_hourly_dataset(self, upload_id):
+        lat = np.array([-45.0, 0.0, 45.0], dtype=np.float32)
+        lon = np.array([0.0, 5.0], dtype=np.float32)
+        ls = np.array([10.0, 20.0], dtype=np.float32)
+        hourly = np.stack([
+            np.full((8, 3, 2), 1.0, dtype=np.float32),
+            np.full((8, 3, 2), 2.0, dtype=np.float32),
+        ], axis=0)
+        if upload_id == 123:
+            return {
+                "data_type": "mcd",
+                "lat": lat,
+                "lon": lon,
+                "ls": ls,
+                "O3COL_hourly": hourly,
+            }
+        raise ValueError("missing upload")
+
 
 def build_client(monkeypatch):
     import routers.analysis as analysis_module
@@ -173,6 +191,18 @@ def test_overview_ozone_sources_can_include_uploaded_openmars_and_nomad(monkeypa
     assert payload["openmars"]["source"] == "openmars"
     assert payload["nomad"]["source"] == "nomad"
     assert payload["validation"]["nomad"]["sample_count"] > 0
+
+
+def test_overview_diurnal_uses_uploaded_mcd_hourly_ozone(monkeypatch):
+    client = build_client(monkeypatch)
+
+    response = client.get("/api/explore/overview/diurnal?mcd_upload_id=123&ls=20&lat_band=Equatorial%20(30S-30N)")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["source_key"] == "O3COL_hourly"
+    assert payload["hours"] == [0.0, 3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0]
 
 
 def test_legacy_personal_overview_source_is_rejected(monkeypatch):

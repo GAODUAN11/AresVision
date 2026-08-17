@@ -231,6 +231,12 @@ async def get_eval_metrics(
         raise HTTPException(status_code=403, detail=str(e))
     except HTTPException:
         raise
+    except Exception as e:
+        logger.exception("prediction metrics calculation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"prediction metrics error: {e}",
+        )
 
 
 @router.post("/training-models/compare", response_model=TrainingModelCompareResponse)

@@ -78,3 +78,4 @@ AresVision_backend/backend/models/**/__pycache__/
 .DS_Store
 Thumbs.db
 /AresVision_backend/backend/data/MCD_Output_global_10m_ls_lst
+/AresVision_backend/backend/data/mcd_cache

@@ -12,7 +12,12 @@ import {
   windLabel,
 } from '../../../utils/units';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+} from './aiInsight';
 
 const VARIABLE_OPTIONS = [
   { id: 'o3col', zh: '臭氧柱浓度', en: 'Ozone Column' },
@@ -196,21 +201,23 @@ export default function SeasonalExtremesChart({ marsYear, overviewSourceParams =
     return {
       card: 'seasonalExtremes',
       marsYear,
+      source: buildOverviewSourceSnapshot(overviewSourceParams),
       variable,
       variableLabel: currentVariableLabel,
       unit: currentUnitLabel,
+      valueMeaning: 'Annual latitude-band amplitude equals max minus min across Ls; peakLs is the Ls where the band reaches its maximum.',
       status: loading ? 'loading' : (data?.bands?.length ? 'ready' : 'empty'),
       strongestBand: strongestBand
         ? {
           band: strongestBand.band,
-          amplitude: roundValue(strongestBand.amplitude),
+          amplitude: formatInsightValue(strongestBand.amplitude),
           peakLs: roundValue(strongestBand.peakLs, 2),
         }
         : null,
-      amplitudeSample: sampleSeries(amplitudes, data?.bands || [], 10),
-      peakLsSample: sampleSeries(peaks, data?.bands || [], 10),
+      amplitudeSample: sampleInsightSeries(amplitudes, data?.bands || [], 10),
+      peakLsSample: sampleInsightSeries(peaks, data?.bands || [], 10),
     };
-  }, [currentUnitLabel, currentVariableLabel, data, loading, marsYear, variable]);
+  }, [currentUnitLabel, currentVariableLabel, data, loading, marsYear, overviewSourceParams, variable]);
 
   useAiInsightRegistration('seasonalExtremes', aiInsightProvider);
 

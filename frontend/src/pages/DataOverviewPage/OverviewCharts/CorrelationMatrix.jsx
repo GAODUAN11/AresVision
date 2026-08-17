@@ -6,7 +6,12 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { ozoneLabel, convertOzone } from '../../../utils/units';
 import { fmtNum } from '../../../utils/fmt';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+} from './aiInsight';
 import { formatAdaptiveSeries, formatAdaptiveValue } from './chartValueFormat';
 
 const VARIABLE_META_BASE = [
@@ -275,8 +280,12 @@ export default function CorrelationMatrix({ marsYear, overviewSourceParams = {} 
   const aiInsightProvider = useCallback(() => ({
     card: 'correlation',
     marsYear,
+    source: buildOverviewSourceSnapshot(overviewSourceParams),
     selectedVariable,
     selectedVariableLabel: selectedMeta?.label || selectedVariable,
+    driverUnit: selectedMeta?.unit || '',
+    ozoneUnit: ozoneLabel(ozoneUnit),
+    valueMeaning: 'Correlation matrix, scatter regression, normalized seasonal co-evolution, and lead-lag correlation between O3 and the selected driver.',
     status: loading ? 'loading' : (derived ? 'ready' : 'empty'),
     strongestPair: strongest
       ? {
@@ -300,16 +309,17 @@ export default function CorrelationMatrix({ marsYear, overviewSourceParams = {} 
       : null,
     ozoneRange: derived?.ozoneSeries?.length
       ? {
-        min: roundValue(Math.min(...derived.ozoneSeries.filter(Number.isFinite))),
-        max: roundValue(Math.max(...derived.ozoneSeries.filter(Number.isFinite))),
+        min: formatInsightValue(ozoneRangeMin),
+        max: formatInsightValue(ozoneRangeMax),
+        unit: ozoneLabel(ozoneUnit),
       }
       : null,
-    lagCurveSample: sampleSeries(
+    lagCurveSample: sampleInsightSeries(
       derived?.lagCurve?.map((item) => item.corr) || [],
       derived?.lagCurve?.map((item) => item.lag) || [],
       10,
     ),
-  }), [corrLabels, derived, loading, marsYear, selectedMeta?.label, selectedVariable, strongest, strongestLag]);
+  }), [corrLabels, derived, loading, marsYear, overviewSourceParams, ozoneRangeMax, ozoneRangeMin, ozoneUnit, selectedMeta?.label, selectedMeta?.unit, selectedVariable, strongest, strongestLag]);
 
   useAiInsightRegistration('correlation', aiInsightProvider);
 

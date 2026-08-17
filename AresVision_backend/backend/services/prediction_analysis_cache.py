@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -216,10 +217,16 @@ class PredictionAnalysisCacheService:
         *,
         lease_seconds=1800.0,
         poll_seconds=0.05,
+        wait_timeout_seconds=10.0,
     ):
         self.sessionmaker = sessionmaker
         self.lease_seconds = float(lease_seconds)
         self.poll_seconds = float(poll_seconds)
+        self.wait_timeout_seconds = (
+            None
+            if wait_timeout_seconds is None
+            else float(wait_timeout_seconds)
+        )
 
     async def get_or_compute(
         self,
@@ -247,12 +254,59 @@ class PredictionAnalysisCacheService:
         fingerprint = build_artifact_fingerprint(task, data_dirs)
 
         try:
+            wait_started_at = None
+            waiting_for = None
+            reclaim = None
             while True:
-                claim = await self._lookup_or_claim(scope, fingerprint)
+                claim = await self._lookup_or_claim(
+                    scope, fingerprint, reclaim=reclaim
+                )
+                reclaim = None
                 if claim.action == "hit":
                     return claim.payload
-                if claim.action in {"wait", "retry"}:
+                if claim.action == "retry":
+                    wait_started_at = None
+                    waiting_for = None
                     await asyncio.sleep(self.poll_seconds)
+                    continue
+                if claim.action == "wait":
+                    now = time.monotonic()
+                    current_wait = (claim.row_id, claim.token)
+                    if waiting_for != current_wait:
+                        waiting_for = current_wait
+                        wait_started_at = now
+
+                    elapsed = (
+                        now - wait_started_at
+                        if wait_started_at is not None
+                        else 0.0
+                    )
+                    if (
+                        self.wait_timeout_seconds is not None
+                        and elapsed >= self.wait_timeout_seconds
+                    ):
+                        logger.warning(
+                            "prediction analysis cache wait timed out; "
+                            "reclaiming row=%s type=%s hash=%s",
+                            claim.row_id,
+                            scope["analysis_type"],
+                            scope["request_hash"][:12],
+                        )
+                        reclaim = {
+                            "row_id": claim.row_id,
+                            "token": claim.token,
+                        }
+                        wait_started_at = None
+                        waiting_for = None
+                        continue
+
+                    sleep_for = self.poll_seconds
+                    if self.wait_timeout_seconds is not None:
+                        remaining = max(
+                            0.0, self.wait_timeout_seconds - elapsed
+                        )
+                        sleep_for = min(sleep_for, remaining)
+                    await asyncio.sleep(sleep_for)
                     continue
                 break
         except asyncio.CancelledError:
@@ -297,7 +351,9 @@ class PredictionAnalysisCacheService:
             )
         return result
 
-    async def _lookup_or_claim(self, scope, fingerprint) -> CacheClaim:
+    async def _lookup_or_claim(
+        self, scope, fingerprint, *, reclaim=None
+    ) -> CacheClaim:
         now = datetime.now(timezone.utc)
         async with self.sessionmaker() as session:
             row = (
@@ -358,7 +414,15 @@ class PredictionAnalysisCacheService:
                 and row.artifact_fingerprint == fingerprint
                 and _lease_is_active(row.lease_expires_at, now)
             ):
-                return CacheClaim("wait", row_id=row.id)
+                should_reclaim = (
+                    reclaim is not None
+                    and reclaim.get("row_id") == row.id
+                    and reclaim.get("token") == row.lease_token
+                )
+                if not should_reclaim:
+                    return CacheClaim(
+                        "wait", row_id=row.id, token=row.lease_token
+                    )
 
             token = str(uuid.uuid4())
             conditions = [PredictionAnalysisCache.id == row.id]

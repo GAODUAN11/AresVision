@@ -12,6 +12,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { getPendingReviews, reviewUpload, getApprovedDatasets, revokeDataset } from '../services/api';
 
+const adminWorkspaceMinHeight = 520;
+
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
 
 function FileIcon({ size = 14, color = 'currentColor' }) {
@@ -332,7 +334,7 @@ function ApprovedCard({ record, t, isLight, onRevoke, loading }) {
 
 // ─── PendingTab ────────────────────────────────────────────────────────────────
 
-function PendingTab({ t, isLight, onReviewComplete, subColor }) {
+function PendingTab({ t, isLight, onReviewComplete, subColor, reviewSignal = 0 }) {
   const { showToast } = useToast();
   const [records, setRecords]         = useState([]);
   const [loading, setLoading]         = useState(false);
@@ -356,7 +358,7 @@ function PendingTab({ t, isLight, onReviewComplete, subColor }) {
     }
   }, [showToast, t]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reviewSignal]);
 
   const doApprove = async (id, confirmed) => {
     if (!confirmed) { setApprovingId(id); return; }
@@ -498,7 +500,7 @@ function PendingTab({ t, isLight, onReviewComplete, subColor }) {
 
 // ─── ApprovedTab ──────────────────────────────────────────────────────────────
 
-function ApprovedTab({ t, isLight, subColor }) {
+function ApprovedTab({ t, isLight, subColor, onReviewComplete, reviewSignal = 0 }) {
   const { showToast } = useToast();
   const [records, setRecords]     = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -519,7 +521,7 @@ function ApprovedTab({ t, isLight, subColor }) {
     }
   }, [showToast, t]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reviewSignal]);
 
   const doRevoke = async (id, confirmed) => {
     if (!confirmed) { setRevokingId(id); return; }
@@ -529,6 +531,7 @@ function ApprovedTab({ t, isLight, subColor }) {
       await revokeDataset(id);
       setRecords(prev => prev.filter(r => r.id !== id));
       showToast(t('admin.revokeSuccess'), 'success');
+      onReviewComplete?.();
     } catch (e) {
       showToast(e.message || t('admin.errorAction'), 'error');
     } finally {
@@ -635,7 +638,7 @@ function ApprovedTab({ t, isLight, subColor }) {
 
 // ─── Panel Content ────────────────────────────────────────────────────────────
 
-function PanelContent({ t, isLight, onClose, onReviewComplete }) {
+function PanelContent({ t, isLight, onClose, onReviewComplete, reviewSignal = 0 }) {
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'approved'
 
   const titleColor  = isLight ? '#000000' : '#ffffff';
@@ -659,7 +662,7 @@ function PanelContent({ t, isLight, onClose, onReviewComplete }) {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          height: 70,
+          height: 56,
         }}>
           <div>
             <div style={{
@@ -673,21 +676,24 @@ function PanelContent({ t, isLight, onClose, onReviewComplete }) {
               {t('admin.panelTitle')}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={onClose}
-              style={{
-                background: 'none', border: `1px solid ${borderColor}`,
-                borderRadius: 7, padding: '5px 8px', cursor: 'pointer',
-                color: subColor, display: 'flex', alignItems: 'center',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = hoverBg}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
-            >
-              <CloseIcon size={14} color="currentColor" />
-            </button>
-          </div>
+          {onClose ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={onClose}
+                style={{
+                  background: 'none', border: `1px solid ${borderColor}`,
+                  borderRadius: 7, padding: '5px 8px', cursor: 'pointer',
+                  color: subColor, display: 'flex', alignItems: 'center',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = hoverBg}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                aria-label="Close admin review panel"
+              >
+                <CloseIcon size={14} color="currentColor" />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* Tab bar */}
@@ -713,17 +719,43 @@ function PanelContent({ t, isLight, onClose, onReviewComplete }) {
 
       {/* Tab content */}
       {activeTab === 'pending' ? (
-        <PendingTab t={t} isLight={isLight} onReviewComplete={onReviewComplete} subColor={subColor} />
+        <PendingTab t={t} isLight={isLight} onReviewComplete={onReviewComplete} subColor={subColor} reviewSignal={reviewSignal} />
       ) : (
-        <ApprovedTab t={t} isLight={isLight} subColor={subColor} />
+        <ApprovedTab t={t} isLight={isLight} subColor={subColor} onReviewComplete={onReviewComplete} reviewSignal={reviewSignal} />
       )}
     </>
   );
 }
 
+export function AdminReviewWorkspace({ onReviewComplete, reviewSignal = 0 }) {
+  const { settings } = useSettings();
+  const t = useT();
+  const isLight = settings.theme === 'light';
+  const panelVars = isLight
+    ? { '--text': '#2a2a3a', '--text-60': 'rgba(42,42,58,0.65)', '--text-30': 'rgba(42,42,58,0.35)', '--border': 'rgba(26,26,46,0.12)' }
+    : { '--text': '#ffffff', '--text-60': '#ffffff', '--text-30': '#ffffff', '--border': 'rgba(232,237,243,0.08)' };
+
+  return (
+    <div
+      style={{
+        minHeight: adminWorkspaceMinHeight,
+        border: isLight ? '1px solid rgba(26,26,46,0.12)' : '1px solid rgba(232,237,243,0.10)',
+        borderRadius: 14,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        background: isLight ? 'rgba(248,248,254,0.92)' : 'rgba(8,8,18,0.76)',
+        ...panelVars,
+      }}
+    >
+      <PanelContent t={t} isLight={isLight} onClose={null} onReviewComplete={onReviewComplete} reviewSignal={reviewSignal} />
+    </div>
+  );
+}
+
 // ─── AdminReviewPanel (drawer wrapper) ───────────────────────────────────────
 
-function AdminReviewPanelInner({ open, onClose, onReviewComplete }) {
+function AdminReviewPanelInner({ open, onClose, onReviewComplete, reviewSignal = 0 }) {
   const { settings } = useSettings();
   const t = useT();
   const isLight = settings.theme === 'light';
@@ -772,15 +804,15 @@ function AdminReviewPanelInner({ open, onClose, onReviewComplete }) {
           ...panelVars,
         }}
       >
-        {open && <PanelContent t={t} isLight={isLight} onClose={onClose} onReviewComplete={onReviewComplete} />}
+        {open && <PanelContent t={t} isLight={isLight} onClose={onClose} onReviewComplete={onReviewComplete} reviewSignal={reviewSignal} />}
       </div>
     </>
   );
 }
 
-export default function AdminReviewPanel({ open, onClose, onReviewComplete }) {
+export default function AdminReviewPanel({ open, onClose, onReviewComplete, reviewSignal = 0 }) {
   return ReactDOM.createPortal(
-    <AdminReviewPanelInner open={open} onClose={onClose} onReviewComplete={onReviewComplete} />,
+    <AdminReviewPanelInner open={open} onClose={onClose} onReviewComplete={onReviewComplete} reviewSignal={reviewSignal} />,
     document.body
   );
 }

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey,
-    Integer, LargeBinary, String, Text, UniqueConstraint,
+    Index, Integer, LargeBinary, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -97,6 +97,73 @@ class UploadRecord(Base):
 
     def __repr__(self) -> str:
         return f"<UploadRecord id={self.id} file={self.filename} status={self.status}>"
+
+
+class McdCacheJob(Base):
+    __tablename__ = "mcd_cache_jobs"
+    __table_args__ = (
+        Index("ix_mcd_cache_jobs_upload_type_status", "upload_id", "job_type", "status"),
+        Index("ix_mcd_cache_jobs_year_type_status", "mars_year", "job_type", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    upload_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("upload_records.id"), nullable=False, index=True
+    )
+    mars_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    job_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    cache_version: Mapped[str] = mapped_column(String(40), nullable=False, default="v1")
+    artifact_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    upload_record: Mapped["UploadRecord"] = relationship(
+        "UploadRecord", foreign_keys=[upload_id]
+    )
+
+    def __repr__(self) -> str:
+        return f"<McdCacheJob id={self.id} upload={self.upload_id} type={self.job_type} status={self.status}>"
+
+
+class McdCacheArtifact(Base):
+    __tablename__ = "mcd_cache_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "upload_id",
+            "cache_type",
+            "source_hash",
+            "cache_version",
+            name="uq_mcd_cache_artifact_version",
+        ),
+        Index("ix_mcd_cache_artifacts_upload_type_status", "upload_id", "cache_type", "status"),
+        Index("ix_mcd_cache_artifacts_year_type_status", "mars_year", "cache_type", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    upload_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("upload_records.id"), nullable=False, index=True
+    )
+    mars_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    cache_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="building", index=True)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    cache_version: Mapped[str] = mapped_column(String(40), nullable=False, default="v1")
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    upload_record: Mapped["UploadRecord"] = relationship(
+        "UploadRecord", foreign_keys=[upload_id]
+    )
+
+    def __repr__(self) -> str:
+        return f"<McdCacheArtifact id={self.id} upload={self.upload_id} type={self.cache_type} status={self.status}>"
 
 
 class DatasetLineageEvent(Base):

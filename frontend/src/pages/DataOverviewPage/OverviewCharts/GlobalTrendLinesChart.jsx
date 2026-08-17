@@ -4,7 +4,12 @@ import C from '../../../constants/colors';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { loadResearchSuiteCached } from './ResearchDataClient';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  sampleInsightSeries,
+  summarizeInsightSeries,
+} from './aiInsight';
 import { movingAverageSeries } from './chartSeries';
 
 const LABELS = {
@@ -125,19 +130,22 @@ export default function GlobalTrendLinesChart({ marsYear, overviewSourceParams =
         return {
           variable: key,
           label: LABELS[key] ? (isZh ? LABELS[key].zh : LABELS[key].en) : key,
-          stats: summarizeSeries(values),
-          delta: Number.isFinite(first) && Number.isFinite(last) ? roundValue(last - first) : null,
-          sample: sampleSeries(values, lsAxis, 8),
+          stats: summarizeInsightSeries(values),
+          delta: Number.isFinite(first) && Number.isFinite(last) ? formatInsightValue(last - first) : null,
+          sample: sampleInsightSeries(values, lsAxis, 8),
         };
       });
     return {
       card: 'globalTrend',
       marsYear,
+      source: buildOverviewSourceSnapshot(overviewSourceParams),
+      unit: 'Z-score',
+      valueMeaning: 'Globally averaged variables normalized as Z-scores for seasonal co-variation comparison; values are not absolute physical units.',
       status: loading ? 'loading' : (seriesSummary.length ? 'ready' : 'empty'),
       lsCount: lsAxis.length,
       series: seriesSummary,
     };
-  }, [data, isZh, loading, marsYear]);
+  }, [data, isZh, loading, marsYear, overviewSourceParams]);
 
   useAiInsightRegistration('globalTrend', aiInsightProvider);
 

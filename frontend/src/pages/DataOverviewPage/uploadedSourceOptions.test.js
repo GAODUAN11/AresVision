@@ -143,8 +143,8 @@ test('buildUploadYearOptions presents personal uploads as selectable Mars years'
   ];
 
   assert.deepEqual(buildUploadYearOptions(uploads), [
-    { value: '3', label: 'MY 35 - openmars-b.nc' },
-    { value: '2', label: 'MY 34 - openmars-a.nc' },
+    { value: '3', label: 'MY 35', detail: 'openmars-b.nc' },
+    { value: '2', label: 'MY 34', detail: 'openmars-a.nc' },
   ]);
   assert.equal(pickDefaultUploadId(uploads), 3);
   assert.equal(pickDefaultUploadId([]), null);

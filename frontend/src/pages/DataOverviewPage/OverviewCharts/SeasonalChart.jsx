@@ -13,7 +13,13 @@ import {
   windLabel,
 } from '../../../utils/units';
 import useAiInsightRegistration from './useAiInsightRegistration';
-import { roundValue, sampleSeries, summarizeSeries } from './aiInsight';
+import {
+  buildOverviewSourceSnapshot,
+  formatInsightValue,
+  roundValue,
+  sampleInsightSeries,
+  summarizeInsightSeries,
+} from './aiInsight';
 import { formatAdaptiveMatrix } from './chartValueFormat';
 
 const VARIABLE_OPTIONS = [
@@ -97,13 +103,13 @@ function buildLatitudeBandSummary({ latAxis, matrix, lsAxis, variable, units, is
       id: band.id,
       band: isZh ? band.zh : band.en,
       sampleCount: rowIndexes.length,
-      stats: summarizeSeries(series),
+      stats: summarizeInsightSeries(series),
       peakLs: peakIdx >= 0 ? roundValue(lsAxis[peakIdx], 2) : null,
       troughLs: troughIdx >= 0 ? roundValue(lsAxis[troughIdx], 2) : null,
       amplitude: Number.isFinite(peakValue) && Number.isFinite(troughValue)
-        ? roundValue(peakValue - troughValue)
+        ? formatInsightValue(peakValue - troughValue)
         : null,
-      sample: sampleSeries(series, lsAxis, 6),
+      sample: sampleInsightSeries(series, lsAxis, 6),
     };
   });
 }
@@ -183,23 +189,25 @@ export default function SeasonalChart({ marsYear, overviewSourceParams = {} }) {
     return {
       card: 'seasonal',
       marsYear,
+      source: buildOverviewSourceSnapshot(overviewSourceParams),
       variable,
       variableLabel: currentVariableLabel,
       unit: currentUnitLabel,
+      valueMeaning: 'Latitude-Ls heatmap values for the selected variable, converted to the current display unit.',
       status: loading ? 'loading' : (data?.z?.length ? 'ready' : 'empty'),
       dimensions: {
         lsCount: lsAxis.length,
         latCount: latAxis.length,
       },
       valueRange: {
-        min: roundValue(convertByVariable(data?.min, variable, units)),
-        max: roundValue(convertByVariable(data?.max, variable, units)),
+        min: formatInsightValue(convertByVariable(data?.min, variable, units)),
+        max: formatInsightValue(convertByVariable(data?.max, variable, units)),
       },
-      globalStats: summarizeSeries(allValues),
+      globalStats: summarizeInsightSeries(allValues),
       latitudeBandSummary,
-      equatorialSeriesSample: sampleSeries(midLatitudeSeries, lsAxis, 12),
+      equatorialSeriesSample: sampleInsightSeries(midLatitudeSeries, lsAxis, 12),
     };
-  }, [currentUnitLabel, currentVariableLabel, data, isZh, loading, marsYear, units, variable]);
+  }, [currentUnitLabel, currentVariableLabel, data, isZh, loading, marsYear, overviewSourceParams, units, variable]);
 
   useAiInsightRegistration('seasonal', aiInsightProvider);
 

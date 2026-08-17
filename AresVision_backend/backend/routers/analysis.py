@@ -199,6 +199,7 @@ async def _resolve_overview_context(
     data_source: str,
     current_user: User | None,
     mcd_upload_id: int | None = None,
+    include_mcd_hourly: bool = False,
 ) -> tuple[AnalysisService, dict, int]:
     _reject_legacy_personal(data_source)
     if not mcd_upload_id:
@@ -206,8 +207,11 @@ async def _resolve_overview_context(
 
     record = await _get_accessible_upload_record(mcd_upload_id, current_user, {"mcd"})
     data = await request.app.state.user_data_service.get_loaded_dataset(record.id)
+    hourly_data = None
+    if include_mcd_hourly:
+        hourly_data = await request.app.state.user_data_service.get_loaded_mcd_hourly_dataset(record.id)
     resolved_year = int(record.mars_year or DEFAULT_MARS_YEAR)
-    view = UserMcdOverviewDataView(upload_id=record.id, mars_year=resolved_year, data=data)
+    view = UserMcdOverviewDataView(upload_id=record.id, mars_year=resolved_year, data=data, hourly_data=hourly_data)
     service = AnalysisService(view, mcd_variables=OVERVIEW_MCD_VARIABLES)
     return service, _uploaded_source_meta(record, "user_mcd"), resolved_year
 
@@ -383,7 +387,7 @@ async def get_overview_diurnal(
 ):
     try:
         service, source_meta, resolved_year = await _resolve_overview_context(
-            request, my, data_source, current_user, mcd_upload_id
+            request, my, data_source, current_user, mcd_upload_id, include_mcd_hourly=True
         )
         result = service.get_diurnal_data(resolved_year, ls, lat_band)
         return _with_source_meta(result, source_meta)

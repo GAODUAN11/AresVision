@@ -266,13 +266,23 @@ def _has_any(ds: xr.Dataset, aliases_by_field: dict[str, tuple[str, ...]]) -> bo
     return any(_data_var(ds, aliases) is not None for aliases in aliases_by_field.values())
 
 
+def is_raw_mcd_dataset(ds: xr.Dataset) -> bool:
+    return all(raw_name in ds.data_vars for raw_name in ("O3COL", "T", "U", "V", "FSDS", "PS"))
+
+
+def is_ready_mcd_dataset(ds: xr.Dataset) -> bool:
+    return _has_any(ds, _READY_MCD_ALIASES) and any(
+        _data_var(ds, aliases) is not None
+        for field, aliases in _READY_MCD_ALIASES.items()
+        if field != "o3col"
+    )
+
+
 def classify_overview_upload_dataset(ds: xr.Dataset, filename: str = "") -> str | None:
     filename_hint = _filename_data_type_hint(filename)
     if _data_var(ds, _COUNT_ALIASES) is not None and _data_var(ds, ("o3col", "O3COL")) is not None:
         return "nomad"
-    if _has_any(ds, _READY_MCD_ALIASES) and any(
-        _data_var(ds, aliases) is not None for field, aliases in _READY_MCD_ALIASES.items() if field != "o3col"
-    ):
+    if is_ready_mcd_dataset(ds):
         return "mcd"
     if _has_any(ds, {key: (value,) for key, value in _RAW_MCD_FIELD_MAP.items()}):
         if any(name in ds.data_vars for name in ("U", "V", "T", "FSDS", "PS")):
@@ -434,7 +444,11 @@ def normalize_overview_upload_dataset(ds: xr.Dataset, filename: str = "") -> dic
     raise ValueError(f"unsupported Data Overview upload type: {data_type}")
 
 
-def validate_overview_upload_dataset(ds: xr.Dataset, filename: str = "") -> OverviewUploadValidationResult:
+def validate_overview_upload_dataset(
+    ds: xr.Dataset,
+    filename: str = "",
+    allow_ready_mcd: bool = True,
+) -> OverviewUploadValidationResult:
     result = OverviewUploadValidationResult(
         data_type=classify_overview_upload_dataset(ds, filename),
         variables=list(ds.data_vars),
@@ -449,6 +463,13 @@ def validate_overview_upload_dataset(ds: xr.Dataset, filename: str = "") -> Over
         data = normalize_overview_upload_dataset(ds, filename)
     except ValueError as exc:
         result.error = str(exc)
+        return result
+
+    if result.data_type == "mcd" and not allow_ready_mcd and not is_raw_mcd_dataset(ds):
+        result.error = (
+            "MCD uploads must use the raw 3-hour MCD file format with O3COL, T, U, V, FSDS, and PS fields, "
+            "for example MCD_MY33_global_3h_5deg_10m_ls_lst.nc"
+        )
         return result
 
     result.data_type = data["data_type"]

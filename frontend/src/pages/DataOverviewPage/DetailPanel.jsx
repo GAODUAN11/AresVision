@@ -141,9 +141,10 @@ export default function DetailPanel({ sliceData, overviewSourceParams = {} }) {
         lsValue={globalTimeLs}
         sliceData={sliceData}
         coordinate={selectedCoordinate}
+        overviewSourceParams={overviewSourceParams}
       />
     ),
-    [marsYear, globalTimeLs, sliceData, selectedCoordinate],
+    [marsYear, globalTimeLs, sliceData, selectedCoordinate, overviewSourceParams],
   );
   const correlationComponent = useMemo(
     () => <CorrelationMatrix marsYear={marsYear} coordinate={selectedCoordinate} overviewSourceParams={overviewSourceParams} />,

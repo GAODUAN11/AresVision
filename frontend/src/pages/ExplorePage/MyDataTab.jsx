@@ -75,16 +75,29 @@ function createCopy(isZh) {
     searchPlaceholder: isZh ? '按文件名、类型或火星年搜索' : 'Search by filename, type, or Mars year',
     queueTitle: isZh ? '数据队列' : 'Dataset Queue',
     queueDesc: isZh
-      ? '先在队列里筛选和定位数据，再到右侧集中查看状态、动作和内容预览。'
-      : 'Filter and locate datasets in the queue, then inspect status, actions, and preview on the right.',
+      ? '先在队列里筛选和定位数据，再到右侧集中查看状态、动作和高级详情。'
+      : 'Filter and locate datasets in the queue, then inspect status, actions, and advanced details on the right.',
     noMatchTitle: isZh ? '没有匹配的数据' : 'No matching datasets',
     noMatchDesc: isZh ? '试试切换筛选条件或修改搜索关键词。' : 'Try another filter or change the search term.',
-    detailTitle: isZh ? '数据详情与预览' : 'Dataset Detail & Preview',
+    detailTitle: isZh ? '数据详情' : 'Dataset Detail',
     detailEmptyTitle: isZh ? '选择一条数据开始查看' : 'Select a dataset to inspect',
     detailEmptyDesc: isZh
-      ? '从左侧数据队列中选中一条记录后，这里会集中展示它的接入状态、可执行动作和内容预览。'
-      : 'Choose a record from the dataset queue to see its ingestion status, available actions, and content preview in one place.',
+      ? '从左侧数据队列中选中一条记录后，这里会集中展示它的接入状态、可执行动作和高级详情入口。'
+      : 'Choose a record from the dataset queue to see its ingestion status, available actions, and advanced detail entry point.',
+    advancedTitle: isZh ? '高级详情' : 'Advanced Details',
+    advancedDesc: isZh
+      ? '展开后查看校验规则、可用页面、元数据和图表预览。'
+      : 'Expand to inspect validation rules, available pages, metadata, and preview charts.',
+    advancedShow: isZh ? '展开高级详情' : 'Show advanced details',
+    advancedHide: isZh ? '收起高级详情' : 'Hide advanced details',
+    personalRoleTitle: isZh ? '三类个人数据' : 'Three Personal Source Types',
     uploadStatusTitle: isZh ? '上传状态' : 'Upload Status',
+    rawMcdSource: isZh ? '原始 MCD 3h' : 'raw MCD 3h',
+    cacheBuilding: isZh ? '缓存生成中' : 'Cache building',
+    cacheReady: isZh ? '缓存完成' : 'Cache ready',
+    cacheFailed: isZh ? '缓存失败' : 'Cache failed',
+    cacheOverview: isZh ? '数据总览缓存' : 'Data Overview cache',
+    cache3h: isZh ? '3h 数据缓存' : '3h data cache',
     accessTitle: isZh ? '可用页面' : 'Available In',
     accessEmpty: isZh ? '当前不能在数据总览中选择使用。' : 'This dataset cannot currently be selected in Data Overview.',
     contributionReadyStat: isZh ? '可送审' : 'Ready to submit',
@@ -200,18 +213,32 @@ function Badge({ label, color, bg }) {
   );
 }
 
-function TopMetric({ label, value, accent = C.ice }) {
+function PersonalSummaryStrip({ summaryStats, t, copy }) {
+  const items = [
+    { label: t('explore.myData.statUploads'), value: summaryStats.total, accent: C.blue },
+    { label: t('explore.myData.statUsable'), value: summaryStats.usable, accent: summaryStats.usable > 0 ? C.green : C.ice60 },
+    { label: copy.reviewQueueStat, value: summaryStats.inReview, accent: summaryStats.inReview > 0 ? '#f59e0b' : C.ice60 },
+  ];
+
   return (
-    <div
-      style={{
-        padding: '10px 12px',
-        borderRadius: 12,
-        background: 'rgba(255,255,255,0.03)',
-        border: `1px solid ${C.border}`,
-      }}
-    >
-      <div style={{ fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice30, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 'calc(18px * var(--font-scale, 1))', color: accent, fontWeight: 700, fontFamily: "'Orbitron', sans-serif" }}>{value}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+      {items.map((item) => (
+        <div
+          key={item.label}
+          style={{
+            minHeight: 68,
+            padding: '11px 13px',
+            borderRadius: 10,
+            border: `1px solid ${C.border}`,
+            background: 'rgba(255,255,255,0.025)',
+          }}
+        >
+          <div style={{ fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice30, marginBottom: 5 }}>{item.label}</div>
+          <div style={{ fontSize: 'calc(18px * var(--font-scale, 1))', color: item.accent, fontWeight: 700, fontFamily: "'Orbitron', sans-serif" }}>
+            {item.value}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -290,6 +317,8 @@ function EmptyState({ icon, title, desc }) {
 function getUploadStatusMeta(status, t) {
   const palette = {
     valid: { color: C.blue, bg: 'rgba(74,158,255,0.1)' },
+    cache_building: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+    cache_failed: { color: C.mars, bg: 'rgba(199,91,57,0.1)' },
     invalid: { color: C.mars, bg: 'rgba(199,91,57,0.1)' },
     pending_review: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
     approved: { color: C.green, bg: 'rgba(74,207,172,0.1)' },
@@ -304,6 +333,22 @@ function getUploadStatusMeta(status, t) {
 
 function normalizeType(type) {
   return String(type || '').trim().toLowerCase();
+}
+
+function getCacheItem(upload, cacheType) {
+  const artifacts = Array.isArray(upload?.cache_status?.artifacts) ? upload.cache_status.artifacts : [];
+  const jobs = Array.isArray(upload?.cache_status?.jobs) ? upload.cache_status.jobs : [];
+  const artifact = artifacts.find((item) => item.cache_type === cacheType && item.status === 'ready');
+  const job = jobs.find((item) => item.job_type === cacheType);
+  return { artifact, job };
+}
+
+function getCacheLabel(upload, cacheType, copy) {
+  const { artifact, job } = getCacheItem(upload, cacheType);
+  if (artifact) return copy.cacheReady;
+  if (job?.status === 'failed') return copy.cacheFailed;
+  if (job) return `${copy.cacheBuilding}${job.progress != null ? ` ${Math.round(job.progress)}%` : ''}`;
+  return normalizeType(upload?.data_type) === 'mcd' ? copy.cacheBuilding : '--';
 }
 
 function getOverviewRoleMeta(datasetUsage, isZh) {
@@ -368,6 +413,8 @@ function deriveContributionCondition(upload, copy) {
 }
 
 function deriveLifecycleLabel(upload, datasetState, copy) {
+  if (upload?.status === 'cache_building') return copy.cacheBuilding;
+  if (upload?.status === 'cache_failed') return copy.cacheFailed;
   if (upload?.status === 'invalid') return copy.lifecycleInvalid;
   if (upload?.status === 'rejected') return copy.lifecycleRejected;
   if (upload?.status === 'approved') return copy.lifecycleApproved;
@@ -684,8 +731,8 @@ function RuleList({ title, ok, desc, rules, copy }) {
   );
 }
 
-function QueueItem({ ctx, selected, onSelect, copy, t }) {
-  const { upload, datasetState, contributionCondition, lifecycleLabel } = ctx;
+function CompactQueueItem({ ctx, selected, onSelect, copy }) {
+  const { upload, datasetState, contributionCondition } = ctx;
   const signalMeta = deriveSignalMeta(ctx, copy);
 
   return (
@@ -695,15 +742,15 @@ function QueueItem({ ctx, selected, onSelect, copy, t }) {
         width: '100%',
         textAlign: 'left',
         border: `1px solid ${selected ? C.blue : C.border}`,
-        borderRadius: 14,
-        padding: '14px 15px',
+        borderRadius: 12,
+        padding: '11px 12px',
         background: selected ? 'rgba(74,158,255,0.08)' : 'rgba(255,255,255,0.02)',
         cursor: 'pointer',
         fontFamily: 'inherit',
         transition: 'border-color 0.15s, background 0.15s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: C.ice30, flexShrink: 0 }}>
@@ -723,29 +770,33 @@ function QueueItem({ ctx, selected, onSelect, copy, t }) {
               {upload.filename}
             </span>
           </div>
-          <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <Badge label={datasetState.label} color={datasetState.color} bg={datasetState.bg} />
-            <Badge label={datasetState.modeMeta.label} color={datasetState.modeMeta.color} bg={datasetState.modeMeta.bg} />
+          <div style={{ marginTop: 7, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30 }}>
+            <span>{upload.data_type || '--'}</span>
+            <span>{upload.mars_year != null ? `MY ${upload.mars_year}` : 'MY --'}</span>
+            <span>{formatLsLabel(upload.ls_start, upload.ls_end, 0)}</span>
           </div>
+          {normalizeType(upload.data_type) === 'mcd' && (
+            <div
+              style={{
+                display: 'grid',
+                gap: 4,
+                marginTop: 8,
+                fontSize: 'calc(10px * var(--font-scale, 1))',
+                color: C.ice30,
+                lineHeight: 1.5,
+              }}
+            >
+              <span style={{ color: C.ice60 }}>{copy.rawMcdSource}</span>
+              <span>{copy.cacheOverview}: {getCacheLabel(upload, 'mcd_overview', copy)}</span>
+              <span>{copy.cache3h}: {getCacheLabel(upload, 'mcd_3h', copy)}</span>
+            </div>
+          )}
         </div>
 
-        <div style={{ flexShrink: 0, fontSize: 'calc(10px * var(--font-scale, 1))', color: C.ice30 }}>{formatDate(upload.created_at)}</div>
-      </div>
-
-      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 10px' }}>
-        <MetaRow label={t('explore.myData.cardType')} value={upload.data_type || '--'} />
-        <MetaRow label={t('explore.myData.cardMarsYear')} value={upload.mars_year != null ? `MY ${upload.mars_year}` : '--'} />
-        <MetaRow label={t('explore.myData.cardLs')} value={formatLsLabel(upload.ls_start, upload.ls_end)} />
-        <MetaRow label={t('explore.myData.cardSize')} value={formatFileSize(upload.file_size)} />
-      </div>
-
-      <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <Badge label={signalMeta.label} color={signalMeta.color} bg={signalMeta.bg} />
-        {contributionCondition.ok && <Badge label={copy.canContributeTitle} color={C.blue} bg="rgba(74,158,255,0.1)" />}
-      </div>
-
-      <div style={{ marginTop: 10, fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.7 }}>
-        {lifecycleLabel}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+          <Badge label={signalMeta.label} color={signalMeta.color} bg={signalMeta.bg} />
+          {contributionCondition.ok && <Badge label={copy.contributionReadyStat} color={C.blue} bg="rgba(74,158,255,0.1)" />}
+        </div>
       </div>
     </button>
   );
@@ -764,6 +815,109 @@ function SnapshotTile({ label, value, desc, accent = C.ice }) {
       <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30 }}>{label}</div>
       <div style={{ marginTop: 8, fontSize: 'calc(14px * var(--font-scale, 1))', color: accent, fontWeight: 700 }}>{value}</div>
       {desc ? <div style={{ marginTop: 7, fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.7 }}>{desc}</div> : null}
+    </div>
+  );
+}
+
+function PersonalCoreDetail({
+  copy,
+  t,
+  viewingCtx,
+  viewingUpload,
+  viewingSignal,
+  viewActionLoading,
+  onContribute,
+  onDelete,
+  advancedOpen,
+  onToggleAdvanced,
+  viewData,
+  viewLs,
+  onLsChange,
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 'calc(18px * var(--font-scale, 1))', color: C.ice, fontWeight: 700, lineHeight: 1.45 }} title={viewingUpload.filename}>
+            {viewingUpload.filename}
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <Badge label={viewingCtx.datasetState.label} color={viewingCtx.datasetState.color} bg={viewingCtx.datasetState.bg} />
+            <Badge label={viewingCtx.uploadStatusMeta.label} color={viewingCtx.uploadStatusMeta.color} bg={viewingCtx.uploadStatusMeta.bg} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <ActionBtn
+            label={viewingUpload.is_public ? t('explore.contribute.contributed') : t('explore.myData.contributeBtn')}
+            borderColor={viewingCtx.contributionCondition.ok ? 'rgba(74,158,255,0.5)' : C.border}
+            textColor={viewingCtx.contributionCondition.ok ? C.blue : C.ice30}
+            activeBg="rgba(74,158,255,0.10)"
+            onClick={onContribute}
+            disabled={viewActionLoading || viewingUpload.is_public || !viewingCtx.contributionCondition.ok}
+          />
+          <ActionBtn
+            label={t('explore.myData.deleteBtn')}
+            borderColor="rgba(199,91,57,0.5)"
+            textColor={C.mars}
+            onClick={onDelete}
+            disabled={viewActionLoading}
+            loading={viewActionLoading}
+          />
+        </div>
+      </div>
+
+      {viewingSignal && (
+        <div
+          style={{
+            border: `1px solid ${viewingSignal.color}33`,
+            borderRadius: 12,
+            padding: '10px 12px',
+            background: viewingSignal.bg,
+            color: viewingSignal.color,
+            fontSize: 'calc(12px * var(--font-scale, 1))',
+            fontWeight: 700,
+          }}
+        >
+          {viewingSignal.label}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+        <SnapshotTile label={copy.lifeCycleTitle} value={viewingCtx.lifecycleLabel} accent={C.ice} />
+        <SnapshotTile label={copy.sourceModeTitle} value={viewingCtx.datasetState.modeMeta.label} accent={viewingCtx.datasetState.modeMeta.color} />
+        <SnapshotTile label={copy.uploadStatusTitle} value={viewingCtx.uploadStatusMeta.label} accent={viewingCtx.uploadStatusMeta.color} />
+      </div>
+
+      <button
+        onClick={onToggleAdvanced}
+        aria-expanded={advancedOpen}
+        style={{
+          alignSelf: 'flex-start',
+          padding: '9px 14px',
+          borderRadius: 10,
+          border: `1px solid ${advancedOpen ? 'rgba(74,158,255,0.45)' : C.border}`,
+          background: advancedOpen ? 'rgba(74,158,255,0.10)' : 'rgba(255,255,255,0.04)',
+          color: advancedOpen ? C.blue : C.ice60,
+          fontSize: 'calc(12px * var(--font-scale, 1))',
+          fontWeight: 700,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        {advancedOpen ? copy.advancedHide : copy.advancedShow}
+      </button>
+
+      <AdvancedDetailSection
+        open={advancedOpen}
+        copy={copy}
+        t={t}
+        viewingCtx={viewingCtx}
+        viewingUpload={viewingUpload}
+        viewData={viewData}
+        viewLs={viewLs}
+        onLsChange={onLsChange}
+      />
     </div>
   );
 }
@@ -914,6 +1068,93 @@ function PreviewContent({ viewData, viewLs, onLsChange, t }) {
   );
 }
 
+function AdvancedDetailSection({ open, copy, t, viewingCtx, viewingUpload, viewData, viewLs, onLsChange }) {
+  if (!open) return null;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        borderTop: `1px solid ${C.border}`,
+        paddingTop: 16,
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: 'calc(11px * var(--font-scale, 1))',
+            fontWeight: 700,
+            color: C.blue,
+            fontFamily: "'Orbitron', sans-serif",
+            letterSpacing: 2,
+            marginBottom: 8,
+          }}
+        >
+          {copy.advancedTitle}
+        </div>
+        <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.75 }}>
+          {copy.advancedDesc}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+        <RuleList
+          title={copy.canUseTitle}
+          ok={viewingCtx.analysisCondition.ok}
+          desc={copy.canUseDesc}
+          rules={viewingCtx.analysisCondition.rules}
+          copy={copy}
+        />
+        <RuleList
+          title={copy.canContributeTitle}
+          ok={viewingCtx.contributionCondition.ok}
+          desc={copy.canContributeDesc}
+          rules={viewingCtx.contributionCondition.rules}
+          copy={copy}
+        />
+      </div>
+
+      <UsagePanel pages={viewingCtx.datasetState.usagePages} copy={copy} />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '8px 14px',
+          padding: '14px 16px',
+          background: 'rgba(255,255,255,0.03)',
+          border: `1px solid ${C.border}`,
+          borderRadius: 14,
+        }}
+      >
+        <MetaRow label={t('explore.myData.cardType')} value={viewingUpload.data_type || '--'} />
+        <MetaRow label={t('explore.myData.cardMarsYear')} value={viewingUpload.mars_year != null ? `MY ${viewingUpload.mars_year}` : '--'} />
+        <MetaRow label={t('explore.myData.cardLs')} value={formatLsLabel(viewingUpload.ls_start, viewingUpload.ls_end)} />
+        <MetaRow label={t('explore.myData.cardSize')} value={formatFileSize(viewingUpload.file_size)} />
+        <MetaRow label={t('explore.myData.cardTime')} value={formatDate(viewingUpload.created_at)} />
+      </div>
+
+      <div>
+        <div
+          style={{
+            fontSize: 'calc(11px * var(--font-scale, 1))',
+            fontWeight: 700,
+            color: C.blue,
+            fontFamily: "'Orbitron', sans-serif",
+            letterSpacing: 2,
+            marginBottom: 10,
+          }}
+        >
+          {t('explore.myData.viewerTitle')}
+        </div>
+        <PreviewContent viewData={viewData} viewLs={viewLs} onLsChange={onLsChange} t={t} />
+      </div>
+    </div>
+  );
+}
+
 function LoginPrompt({ t, openAuthModal }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', gap: 20, textAlign: 'center' }}>
@@ -976,6 +1217,8 @@ export default function MyDataTab({ reviewSignal = 0 }) {
   const [actionLoading, setActionLoading] = useState({});
   const [contributeOpen, setContributeOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const previewRequestRef = useRef(0);
 
   const loadWorkbench = useCallback(async () => {
     if (!user) return;
@@ -994,10 +1237,12 @@ export default function MyDataTab({ reviewSignal = 0 }) {
     if (user) loadWorkbench();
   }, [user, loadWorkbench, reviewSignal]);
 
-  const loadViewData = useCallback(async (uploadId) => {
+  const loadViewData = useCallback(async (uploadId, requestId) => {
     setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: true, error: null });
     try {
       const summary = await fetchUserDataSummary(uploadId);
+      if (requestId !== previewRequestRef.current) return;
+
       let defaultLs = 90;
       if (summary.ls_range) {
         defaultLs = Math.round((summary.ls_range[0] + summary.ls_range[1]) / 2);
@@ -1015,25 +1260,40 @@ export default function MyDataTab({ reviewSignal = 0 }) {
         ]);
       }
 
+      if (requestId !== previewRequestRef.current) return;
       setViewData({ summary, globe, heatmap, bands, loading: false, error: null });
     } catch (e) {
+      if (requestId !== previewRequestRef.current) return;
       setViewData((prev) => ({ ...prev, loading: false, error: e.message || t('common.error') }));
     }
   }, [t]);
 
   useEffect(() => {
-    if (viewingId != null) {
-      loadViewData(viewingId);
+    if (viewingId != null && advancedOpen) {
+      const requestId = previewRequestRef.current + 1;
+      previewRequestRef.current = requestId;
+      loadViewData(viewingId, requestId);
     } else {
+      previewRequestRef.current += 1;
       setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: false, error: null });
     }
-  }, [viewingId, loadViewData]);
+  }, [viewingId, advancedOpen, loadViewData]);
+
+  const onSelectDataset = useCallback((uploadId) => {
+    previewRequestRef.current += 1;
+    setAdvancedOpen(false);
+    setViewingId(uploadId);
+    setViewData({ summary: null, globe: null, heatmap: null, bands: null, loading: false, error: null });
+  }, []);
 
   const handleViewLsChange = useCallback(async (newLs) => {
     setViewLs(newLs);
     if (viewingId == null) return;
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
     try {
       const globe = await fetchUserGlobeData(viewingId, newLs);
+      if (requestId !== previewRequestRef.current) return;
       setViewData((prev) => ({ ...prev, globe }));
     } catch {
       // keep previous preview
@@ -1275,20 +1535,13 @@ export default function MyDataTab({ reviewSignal = 0 }) {
             </div>
             <div style={{ fontSize: 'calc(20px * var(--font-scale, 1))', color: C.ice, fontWeight: 700, lineHeight: 1.4 }}>{copy.myHubTitle}</div>
             <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <Badge label={t('explore.defaultDataset.heroTags.openmars')} color={C.blue} bg="rgba(74,158,255,0.1)" />
               <Badge label={t('explore.defaultDataset.heroTags.mcd')} color={C.mars} bg="rgba(199,91,57,0.1)" />
-              <Badge label={t('explore.myData.ingestCheck1')} color={C.ice60} bg="rgba(255,255,255,0.05)" />
-              <Badge label={t('explore.myData.ingestCheck2')} color={C.ice60} bg="rgba(255,255,255,0.05)" />
-              <Badge label={t('explore.myData.ingestCheck3')} color={C.ice60} bg="rgba(255,255,255,0.05)" />
+              <Badge label={t('explore.defaultDataset.heroTags.openmars')} color={C.blue} bg="rgba(74,158,255,0.1)" />
+              <Badge label="NOMAD" color={C.green} bg="rgba(74,207,172,0.1)" />
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-            <TopMetric label={t('explore.myData.statUploads')} value={summaryStats.total} accent={C.blue} />
-            <TopMetric label={t('explore.myData.statUsable')} value={summaryStats.usable} accent={summaryStats.usable > 0 ? C.green : C.ice60} />
-            <TopMetric label={copy.contributionReadyStat} value={summaryStats.contributionReady} accent={summaryStats.contributionReady > 0 ? C.blue : C.ice60} />
-            <TopMetric label={copy.reviewQueueStat} value={summaryStats.inReview} accent={summaryStats.inReview > 0 ? '#f59e0b' : C.ice60} />
-          </div>
+          <PersonalSummaryStrip summaryStats={summaryStats} t={t} copy={copy} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 18, alignItems: 'start' }}>
             <UploadZone
@@ -1312,18 +1565,23 @@ export default function MyDataTab({ reviewSignal = 0 }) {
             />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <GlowCard style={{ padding: '16px 18px' }}>
-                <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', fontWeight: 700, color: C.green, fontFamily: "'Orbitron', sans-serif", letterSpacing: 2, marginBottom: 8 }}>
-                  {isZh ? '使用边界' : 'Usage Boundary'}
+              <div
+                style={{
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  padding: '15px 16px',
+                  background: 'rgba(255,255,255,0.025)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 13,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', fontWeight: 700, color: C.ice }}>
+                    {copy.contributionTitle}
+                  </div>
+                  <Badge label={`${copy.contributionReadyStat}: ${summaryStats.contributionReady}`} color={summaryStats.contributionReady > 0 ? C.blue : C.ice30} bg="rgba(255,255,255,0.05)" />
                 </div>
-                <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8 }}>
-                  {isZh
-                    ? '这里上传的是数据总览可视化原始数据：MCD 需能提供臭氧与环境变量，OpenMARS / NOMAD 需提供网格化臭氧图层。训练与预测页面使用的融合数据由管理员在服务器后台维护。'
-                    : 'Uploads here are raw datasets for Data Overview visualization: MCD must provide ozone plus environmental fields, while OpenMARS / NOMAD provide gridded ozone layers. Fusion data for training and prediction is maintained by admins on the server.'}
-                </div>
-              </GlowCard>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ fontSize: 'calc(11px * var(--font-scale, 1))', color: C.ice30, lineHeight: 1.7 }}>
                   {validContributionUploads.length > 0
                     ? `${copy.contributionReadyStat}: ${summaryStats.contributionReady} | ${copy.reviewQueueStat}: ${summaryStats.inReview}`
@@ -1384,7 +1642,6 @@ export default function MyDataTab({ reviewSignal = 0 }) {
           >
             {copy.queueTitle}
           </div>
-          <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.8, marginBottom: 14 }}>{copy.queueDesc}</div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {filterDefs.map((filter) => (
@@ -1467,15 +1724,14 @@ export default function MyDataTab({ reviewSignal = 0 }) {
           )}
 
           {!uploadsLoading && filteredUploadContexts.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 980, overflowY: 'auto', paddingRight: 2 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxHeight: 820, overflowY: 'auto', paddingRight: 2 }}>
               {filteredUploadContexts.map((ctx) => (
-                <QueueItem
+                <CompactQueueItem
                   key={ctx.upload.id}
                   ctx={ctx}
                   selected={viewingId === ctx.upload.id}
-                  onSelect={() => setViewingId(ctx.upload.id)}
+                  onSelect={() => onSelectDataset(ctx.upload.id)}
                   copy={copy}
-                  t={t}
                 />
               ))}
             </div>
@@ -1503,118 +1759,21 @@ export default function MyDataTab({ reviewSignal = 0 }) {
               desc={copy.detailEmptyDesc}
             />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 'calc(18px * var(--font-scale, 1))', color: C.ice, fontWeight: 700, lineHeight: 1.45 }} title={viewingUpload.filename}>
-                    {viewingUpload.filename}
-                  </div>
-                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    <Badge label={viewingCtx.datasetState.label} color={viewingCtx.datasetState.color} bg={viewingCtx.datasetState.bg} />
-                    <Badge label={viewingCtx.datasetState.modeMeta.label} color={viewingCtx.datasetState.modeMeta.color} bg={viewingCtx.datasetState.modeMeta.bg} />
-                    <Badge label={viewingCtx.uploadStatusMeta.label} color={viewingCtx.uploadStatusMeta.color} bg={viewingCtx.uploadStatusMeta.bg} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <ActionBtn
-                    label={viewingUpload.is_public ? t('explore.contribute.contributed') : t('explore.myData.contributeBtn')}
-                    borderColor={viewingCtx.contributionCondition.ok ? 'rgba(74,158,255,0.5)' : C.border}
-                    textColor={viewingCtx.contributionCondition.ok ? C.blue : C.ice30}
-                    activeBg="rgba(74,158,255,0.10)"
-                    onClick={() => setContributeOpen(true)}
-                    disabled={viewActionLoading || viewingUpload.is_public || !viewingCtx.contributionCondition.ok}
-                  />
-                  <ActionBtn
-                    label={t('explore.myData.deleteBtn')}
-                    borderColor="rgba(199,91,57,0.5)"
-                    textColor={C.mars}
-                    onClick={() => setConfirmDelete(viewingUpload.id)}
-                    disabled={viewActionLoading}
-                    loading={viewActionLoading}
-                  />
-                </div>
-              </div>
-
-              {viewingSignal && (
-                <div
-                  style={{
-                    border: `1px solid ${viewingSignal.color}33`,
-                    borderRadius: 14,
-                    padding: '12px 14px',
-                    background: viewingSignal.bg,
-                    color: viewingSignal.color,
-                    fontSize: 'calc(12px * var(--font-scale, 1))',
-                    fontWeight: 700,
-                  }}
-                >
-                  {viewingSignal.label}
-                </div>
-              )}
-
-              <div style={{ fontSize: 'calc(12px * var(--font-scale, 1))', color: C.ice60, lineHeight: 1.85 }}>
-                {viewingCtx.datasetState.desc}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-                <RuleList
-                  title={copy.canUseTitle}
-                  ok={viewingCtx.analysisCondition.ok}
-                  desc={copy.canUseDesc}
-                  rules={viewingCtx.analysisCondition.rules}
-                  copy={copy}
-                />
-                <RuleList
-                  title={copy.canContributeTitle}
-                  ok={viewingCtx.contributionCondition.ok}
-                  desc={copy.canContributeDesc}
-                  rules={viewingCtx.contributionCondition.rules}
-                  copy={copy}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-                <SnapshotTile label={copy.lifeCycleTitle} value={viewingCtx.lifecycleLabel} accent={C.ice} />
-                <SnapshotTile label={copy.sourceModeTitle} value={viewingCtx.datasetState.modeMeta.label} desc={copy.sourceModeDesc} accent={viewingCtx.datasetState.modeMeta.color} />
-                <SnapshotTile label={copy.uploadStatusTitle} value={viewingCtx.uploadStatusMeta.label} accent={viewingCtx.uploadStatusMeta.color} />
-              </div>
-
-              <UsagePanel pages={viewingCtx.datasetState.usagePages} copy={copy} />
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                  gap: '8px 14px',
-                  padding: '14px 16px',
-                  background: 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 14,
-                }}
-              >
-                <MetaRow label={t('explore.myData.cardType')} value={viewingUpload.data_type || '--'} />
-                <MetaRow label={t('explore.myData.cardMarsYear')} value={viewingUpload.mars_year != null ? `MY ${viewingUpload.mars_year}` : '--'} />
-                <MetaRow label={t('explore.myData.cardLs')} value={formatLsLabel(viewingUpload.ls_start, viewingUpload.ls_end)} />
-                <MetaRow label={t('explore.myData.cardSize')} value={formatFileSize(viewingUpload.file_size)} />
-                <MetaRow label={t('explore.myData.cardTime')} value={formatDate(viewingUpload.created_at)} />
-              </div>
-
-              <div>
-                <div
-                  style={{
-                    fontSize: 'calc(11px * var(--font-scale, 1))',
-                    fontWeight: 700,
-                    color: C.blue,
-                    fontFamily: "'Orbitron', sans-serif",
-                    letterSpacing: 2,
-                    marginBottom: 10,
-                  }}
-                >
-                  {t('explore.myData.viewerTitle')}
-                </div>
-                <PreviewContent viewData={viewData} viewLs={viewLs} onLsChange={handleViewLsChange} t={t} />
-              </div>
-            </div>
+            <PersonalCoreDetail
+              copy={copy}
+              t={t}
+              viewingCtx={viewingCtx}
+              viewingUpload={viewingUpload}
+              viewingSignal={viewingSignal}
+              viewActionLoading={viewActionLoading}
+              onContribute={() => setContributeOpen(true)}
+              onDelete={() => setConfirmDelete(viewingUpload.id)}
+              advancedOpen={advancedOpen}
+              onToggleAdvanced={() => setAdvancedOpen((value) => !value)}
+              viewData={viewData}
+              viewLs={viewLs}
+              onLsChange={handleViewLsChange}
+            />
           )}
         </GlowCard>
       </div>

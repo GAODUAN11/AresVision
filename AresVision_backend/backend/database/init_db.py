@@ -22,6 +22,8 @@ from database.models import (
     PredictionAnalysisCache,
     DatasetLineageEvent,
     DatasetQualitySnapshot,
+    McdCacheJob,
+    McdCacheArtifact,
 )  # noqa: F401
 from services.training_paths import build_task_output_path
 
